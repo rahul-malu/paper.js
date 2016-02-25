@@ -139,15 +139,6 @@ var Path = PathItem.extend(/** @lends Path# */{
             this._clockwise = clockwise;
     },
 
-    clone: function(insert) {
-        var copy = new paper[this._class](Item.NO_INSERT);
-        copy.setSegments(this._segments);
-        copy._closed = this._closed;
-        if (this._clockwise !== undefined)
-            copy._clockwise = this._clockwise;
-        return this._clone(copy, insert);
-    },
-
     _changed: function _changed(flags) {
         _changed.base.call(this, flags);
         if (flags & /*#=*/ChangeFlag.GEOMETRY) {
@@ -1073,14 +1064,11 @@ var Path = PathItem.extend(/** @lends Path# */{
                 // will happen below.
                 path = this;
             } else {
-                path = new Path(Item.NO_INSERT);
                 // Pass true for _preserve, in case of CompoundPath, to avoid
                 // reversing of path direction, which would mess with segments!
-                path.insertAbove(this, true);
 
                 // Use _clone to copy over all other attributes, including style
-
-                path = this._clone(new paper[this._class]().insertAbove(this, true));
+                path = this.clone();
             }
             path._add(segs, 0);
             // Add dividing segment again. In case of a closed path, that's the
