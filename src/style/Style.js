@@ -197,7 +197,8 @@ var Style = Base.extend(new function() {
             // If the owner has children, walk through all of them and see if
             // they all have the same style.
             // If true is passed for _dontMerge, don't merge children styles
-            if (key in this._defaults && (!children || children.length === 0 || _dontMerge || (owner && owner.skipChildrenStyles)) {
+            if (key in this._defaults && (!children || children.length === 0
+                || _dontMerge || (owner && owner.skipChildrenStyles))) {
                 var value = this._values[key];
                 if (value === undefined) {
                     value = this._defaults[key];

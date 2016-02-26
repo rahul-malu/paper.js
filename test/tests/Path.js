@@ -361,6 +361,14 @@ test('Simplifying a path with three segments of the same position should not thr
     }, 1);
 });
 
+test('Simplifying a path with three segments of the same position should not throw an error', function() {
+    var path = new Path([20, 20], [20, 20], [20, 20]);
+    path.simplify();
+    equals(function() {
+        return path.segments.length;
+    }, 1);
+});
+
 test('Path#interpolate', function() {
     var path = new Path(),
         path0 = new Path.Circle({
@@ -598,12 +606,6 @@ test('path.arcTo(from, through, to); where from, through and to all share the sa
         error = e;
     }
     equals(error != null, true, 'We expect this arcTo() command to throw an error');
-test('Simplifying a path with three segments of the same position should not throw an error', function() {
-    var path = new Path([20, 20], [20, 20], [20, 20]);
-    path.simplify();
-    equals(function() {
-        return path.segments.length;
-    }, 1);
 });
 
 test('path.arcTo(from, through, to); where from, through and to all share the same y position and through lies to the left of to', function() {
