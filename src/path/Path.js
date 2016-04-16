@@ -1064,9 +1064,10 @@ var Path = PathItem.extend(/** @lends Path# */{
                 // will happen below.
                 path = this;
             } else {
-                path = new Path(Item.NO_INSERT);
+                path = new paper[this._class];
                 // Pass true for _preserve, in case of CompoundPath, to avoid
                 // reversing of path direction, which would mess with segments!
+
                 path.insertAbove(this, true);
                 path.copyAttributes(this);
             }
