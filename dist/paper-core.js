@@ -1,5 +1,5 @@
 /*!
- * Paper.js v0.9.25-prebuilt/prod - The Swiss Army Knife of Vector Graphics Scripting.
+ * Paper.js v0.9.25-prebuilt/prodTemp - The Swiss Army Knife of Vector Graphics Scripting.
  * http://paperjs.org/
  *
  * Copyright (c) 2011 - 2016, Juerg Lehni & Jonathan Puckey
@@ -9,7 +9,7 @@
  *
  * All rights reserved.
  *
- * Date: Sat Apr 16 19:24:59 2016 -0400
+ * Date: Sat Apr 16 19:35:25 2016 -0400
  *
  ***
  *
@@ -767,7 +767,7 @@ var PaperScope = Base.extend({
 		}
 	},
 
-	version: "0.9.25-prebuilt/prod",
+	version: "0.9.25-prebuilt/prodTemp",
 
 	getView: function() {
 		var project = this.project;
@@ -12470,36 +12470,43 @@ var Key = new function() {
 
 	DomEvent.add(document, {
 		keydown: function(event) {
-			var key = getKey(event),
-				agent = paper && paper.agent;
-			if (key.length > 1 || agent && (agent.chrome && (event.altKey
-						|| agent.mac && event.metaKey
-						|| !agent.mac && event.ctrlKey))) {
-				handleKey(true, key,
-						charLookup[key] || (key.length > 1 ? '' : key), event);
-			} else {
-				downKey = key;
+			if (event.key || event.keyIdentifier) {
+				var key = getKey(event),
+					agent = paper && paper.agent;
+				if (key.length > 1 || agent && (agent.chrome && (event.altKey
+							|| agent.mac && event.metaKey
+							|| !agent.mac && event.ctrlKey))) {
+					handleKey(true, key,
+							charLookup[key] || (key.length > 1 ? '' : key), event);
+				} else {
+					downKey = key;
+				}
 			}
 		},
 
 		keypress: function(event) {
-			if (downKey) {
-				var key = getKey(event),
-					code = event.charCode,
-					character = code >= 32 ? String.fromCharCode(code)
-						: key.length > 1 ? '' : key;
-				if (key !== downKey) {
-					key = character.toLowerCase();
+			if (event.key || event.keyIdentifier) {
+				if (downKey) {
+					var key = getKey(event),
+						code = event.charCode,
+						character = code >= 32 ? String.fromCharCode(code)
+							: key.length > 1 ? '' : key;
+					if (key !== downKey) {
+						key = character.toLowerCase();
+					}
+					handleKey(true, key, character, event);
+					downKey = null;
 				}
-				handleKey(true, key, character, event);
-				downKey = null;
 			}
 		},
 
 		keyup: function(event) {
-			var key = getKey(event);
-			if (key in charMap)
-				handleKey(false, key, charMap[key], event);
+			if (event.key || event.keyIdentifier) {
+				var key = getKey(event);
+				if (key in charMap) {
+					handleKey(false, key, charMap[key], event);
+				}
+			}
 		}
 	});
 

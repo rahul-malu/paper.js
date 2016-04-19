@@ -135,48 +135,55 @@ var Key = new function() {
 
     DomEvent.add(document, {
         keydown: function(event) {
-            var key = getKey(event),
-                agent = paper && paper.agent;
-            // Directly handle any special keys (key.length > 1) in keydown, as
-            // not all of them will receive keypress events.
-            // Chrome doesn't fire keypress events for command and alt keys,
-            // so we need to handle this in a way that works across all OSes.
-            if (key.length > 1 || agent && (agent.chrome && (event.altKey
-                        || agent.mac && event.metaKey
-                        || !agent.mac && event.ctrlKey))) {
-                handleKey(true, key,
-                        charLookup[key] || (key.length > 1 ? '' : key), event);
-            } else {
-                // If it wasn't handled yet, store the downKey so keypress can
-                // compare and handle buggy edge cases, known to happen in
-                // Chrome on Ubuntu.
-                downKey = key;
+            if (event.key || event.keyIdentifier) {
+                var key = getKey(event),
+                    agent = paper && paper.agent;
+                // Directly handle any special keys (key.length > 1) in keydown, as
+                // not all of them will receive keypress events.
+                // Chrome doesn't fire keypress events for command and alt keys,
+                // so we need to handle this in a way that works across all OSes.
+                if (key.length > 1 || agent && (agent.chrome && (event.altKey
+                            || agent.mac && event.metaKey
+                            || !agent.mac && event.ctrlKey))) {
+                    handleKey(true, key,
+                            charLookup[key] || (key.length > 1 ? '' : key), event);
+                } else {
+                    // If it wasn't handled yet, store the downKey so keypress can
+                    // compare and handle buggy edge cases, known to happen in
+                    // Chrome on Ubuntu.
+                    downKey = key;
+                }
             }
         },
 
         keypress: function(event) {
-            if (downKey) {
-                var key = getKey(event),
-                    code = event.charCode,
-                    // Try event.charCode if its above 32 and fall back onto the
-                    // key value if it's a single character, empty otherwise.
-                    character = code >= 32 ? String.fromCharCode(code)
-                        : key.length > 1 ? '' : key;
-                if (key !== downKey) {
-                    // This shouldn't happen, but it does in Chrome on Ubuntu.
-                    // In these cases, character is actually the key we want!
-                    // See #881
-                    key = character.toLowerCase();
+            if (event.key || event.keyIdentifier) {
+                if (downKey) {
+                    var key = getKey(event),
+                        code = event.charCode,
+                        // Try event.charCode if its above 32 and fall back onto the
+                        // key value if it's a single character, empty otherwise.
+                        character = code >= 32 ? String.fromCharCode(code)
+                            : key.length > 1 ? '' : key;
+                    if (key !== downKey) {
+                        // This shouldn't happen, but it does in Chrome on Ubuntu.
+                        // In these cases, character is actually the key we want!
+                        // See #881
+                        key = character.toLowerCase();
+                    }
+                    handleKey(true, key, character, event);
+                    downKey = null;
                 }
-                handleKey(true, key, character, event);
-                downKey = null;
             }
         },
 
         keyup: function(event) {
-            var key = getKey(event);
-            if (key in charMap)
-                handleKey(false, key, charMap[key], event);
+            if (event.key || event.keyIdentifier) {
+                var key = getKey(event);
+                if (key in charMap) {
+                    handleKey(false, key, charMap[key], event);
+                }
+            }
         }
     });
 
