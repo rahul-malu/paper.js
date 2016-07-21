@@ -12,14 +12,14 @@
 
 var isNode = typeof global === 'object',
     isPhantom = typeof window === 'object' && !!window.callPhantom,
-    root;
+    scope;
 
 if (isNode) {
-    root = global;
+    scope = global;
     // Resemble.js needs the Image constructor global.
     global.Image = paper.window.Image;
 } else {
-    root = window;
+    scope = window;
     // This is only required when running in the browser:
     // Until window.history.pushState() works when running locally, we need to
     // trick qunit into thinking that the feature is not present. This appears
@@ -35,13 +35,16 @@ if (isNode) {
 }
 
 // The unit-tests expect the paper classes to be global.
-paper.install(root);
+paper.install(scope);
 
 // Override console.error, so that we can catch errors that are only logged to
 // the console.
 var errorHandler = console.error;
 console.error = function() {
-    QUnit.pushFailure([].join.call(arguments, ' '), QUnit.config.current.stack);
+    var current = QUnit.config.current;
+    if (current) {
+        QUnit.pushFailure([].join.call(arguments, ' '), current.stack);
+    }
     errorHandler.apply(this, arguments);
 };
 
@@ -153,6 +156,14 @@ var comparePixels = function(actual, expected, message, options) {
                 + '" src="' + raster.source + '">';
     }
 
+    if (!expected) {
+        return QUnit.strictEqual(actual, expected, message, options);
+    } else if (!actual) {
+        // In order to compare pixels, just create an empty item that can be
+        // rasterized to an empty raster.
+        actual = new Group();
+    }
+
     options = options || {};
     // In order to properly compare pixel by pixel, we need to put each item
     // into a group with a white background of the united dimensions of the
@@ -204,7 +215,7 @@ var comparePixels = function(actual, expected, message, options) {
             .onComplete(function(data) { result = data; });
          // Compare with tolerance in percentage...
         var tolerance = (options.tolerance || 1e-4) * 100,
-            fixed = ((1 / tolerance) + '').length - 1,
+            fixed = tolerance < 1 ? ((1 / tolerance) + '').length - 1 : 0,
             identical = result ? 100 - result.misMatchPercentage : 0,
             reached = identical.toFixed(fixed),
             hundred = (100).toFixed(fixed),
@@ -374,7 +385,7 @@ var comparators = {
 
     Path: function(actual, expected, message, options) {
         compareItem(actual, expected, message, options,
-                ['segments', 'closed', 'clockwise', 'length']);
+                ['segments', 'closed', 'clockwise']);
     },
 
     CompoundPath: function(actual, expected, message, options) {
@@ -449,10 +460,15 @@ var compareBoolean = function(actual, expected, message, options) {
             message = getFunctionMessage(actual);
         actual = actual();
     }
-    actual.style = expected.style = {
+    var style = {
         strokeColor: 'black',
-        fillColor: expected.closed || expected.children ? 'yellow' : null
+        fillColor: expected &&
+                (expected.closed || expected.children && 'yellow') || null
     };
+    if (actual)
+        actual.style = style;
+    if (expected)
+        expected.style = style;
     equals(actual, expected, message, Base.set({ rasterize: true }, options));
 };
 
@@ -490,7 +506,7 @@ var compareSVG = function(done, actual, expected, message, options) {
 
     function compare() {
         comparePixels(actual, expected, message, Base.set({
-            tolerance: 1e-2,
+            tolerance: 1e-3,
             resolution: 72
         }, options));
         done();

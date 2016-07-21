@@ -60,6 +60,10 @@ test('Create a raster from a dom image', function(assert) {
             equals(raster.size, new Size(146, 146), true);
             document.body.removeChild(img);
             done();
+        },
+        error: function() {
+            pushFailure('Loading from a valid data URL should not give an error.');
+            done();
         }
     });
 });
@@ -81,6 +85,10 @@ test('Create a raster from a dom id', function(assert) {
             var raster = new Raster('testimage');
             equals(raster.size, new Size(146, 146), true);
             document.body.removeChild(img);
+            done();
+        },
+        error: function() {
+            pushFailure('Loading from a valid data URL should not give an error.');
             done();
         }
     });
@@ -125,7 +133,8 @@ test('Raster#getSubCanvas', function(assert) {
             255, 255, 255, 255
         ];
         equals(function() {
-            return Base.equals(Array.prototype.slice.call(ctx.getImageData(0, 0, 1, 2).data), expected);
+            return Base.equals(Base.slice(ctx.getImageData(0, 0, 1, 2).data),
+                    expected);
         }, true);
         done();
     };

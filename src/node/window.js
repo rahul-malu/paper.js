@@ -18,13 +18,16 @@ var jsdom = require('jsdom');
 // Create our document and window objects through jsdom.
 /* global document:true, window:true */
 var document = jsdom.jsdom('<html><body></body></html>', {
+        // Use the current working directory as the document's origin, so
+        // requests to local files work correctly with CORS.
+        url: 'file://' + process.cwd() + '/',
         features: {
-            FetchExternalResources : ['img', 'script']
+            FetchExternalResources: ['img', 'script']
         }
     }),
     window = document.defaultView;
 
-require('./canvas')(window);
+require('./canvas.js')(window);
 
 // Define XMLSerializer and DOMParser shims, to emulate browser behavior.
 // Effort to bring this to jsdom: https://github.com/tmpvar/jsdom/issues/1368
@@ -49,25 +52,6 @@ XMLSerializer.prototype.serializeToString = function(node) {
     return text;
 };
 
-function DOMParser() {
-}
-
-DOMParser.prototype.parseFromString = function(string, contenType) {
-    // Create a new document, since we're supposed to always return one.
-    var doc = document.implementation.createHTMLDocument(''),
-        body = doc.body,
-        last;
-    // Set the body's HTML, then change the DOM according the specs.
-    body.innerHTML = string;
-    // Remove all top-level children (<html><head/><body/></html>)
-    while (last = doc.lastChild)
-        doc.removeChild(last);
-    // Insert the first child of the body at the top.
-    doc.appendChild(body.firstChild);
-    return doc;
-};
-
 window.XMLSerializer = XMLSerializer;
-window.DOMParser = DOMParser;
 
 module.exports = window;

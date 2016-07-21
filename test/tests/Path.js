@@ -57,57 +57,70 @@ test('curve.getTimeAt() with straight curve', function() {
     equals(t, 0.3869631475722452);
 });
 
-test('path.join(path)', function() {
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+test('path1.join(path2)', function() {
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(10, 0);
     path2.add(20, 10);
 
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
-    equals(function() {
-        return paper.project.activeLayer.children.length;
-    }, 1);
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
+    equals(function() { return paper.project.activeLayer.children.length; }, 1);
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(20, 10);
     path2.add(10, 0);
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(30, 10);
     path2.add(40, 0);
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 30, y: 10 } },{ point: { x: 40, y: 0 } }');
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 30, y: 10 } },{ point: { x: 40, y: 0 } }');
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
-    path.add(20, 10);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
+    path1.add(20, 10);
 
     var path2 = new Path();
     path2.add(0, 0);
     path2.add(10, 5);
     path2.add(20, 10);
 
-    path.join(path2);
+    path1.join(path2);
 
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } },{ point: { x: 10, y: 5 } }');
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } },{ point: { x: 10, y: 5 } }');
+    equals(function() { return path1.closed; }, true);
+});
+
+test('path1.join(path2, tolerance)', function() {
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
+
+    var path2 = new Path();
+    path2.add(path1.lastSegment.point.add(1e-14));
+    path2.add(20, 10);
+
     equals(function() {
-        return path.closed;
-    }, true);
+        return path1.clone().join(path2.clone(), 0).segments.length;
+    }, 4);
+    equals(function() {
+        return path1.clone().join(path2.clone(), 1e-12).segments.length;
+    }, 3);
 });
 
 test('path.remove()', function() {
@@ -394,7 +407,8 @@ test('Path#interpolate', function() {
     equals(path, halfway);
 });
 
-QUnit.module('Path Curves');
+////////////////////////////////////////////////////////////////////////////////
+// Path Curves
 
 test('path.curves synchronisation', function() {
     var path = new Path();
@@ -549,7 +563,7 @@ test('Curve list after removing a segment - 2', function() {
 
 test('Splitting a straight path should produce segments without handles', function() {
     var path1 = new Path.Line([0, 0], [50, 50]);
-    var path2 = path1.split(0, 0.5);
+    var path2 = path1.splitAt(path1.length / 2);
     equals(function() {
         return !path1.lastSegment.hasHandles() && !path2.firstSegment.hasHandles();
     }, true);
@@ -557,7 +571,8 @@ test('Splitting a straight path should produce segments without handles', functi
 
 test('Splitting a path with one curve in the middle result in two paths of the same length with one curve each', function() {
     var path1 = new Path.Line([0, 0], [100, 100]);
-    var path2 = path1.split(path1.getLocationAt(path1.length / 2));
+    var loc = path1.getLocationAt(path1.length / 2);
+    var path2 = path1.splitAt(loc);
     equals(function() {
         return path1.curves.length;
     }, 1);
@@ -569,7 +584,8 @@ test('Splitting a path with one curve in the middle result in two paths of the s
     }, true);
 });
 
-QUnit.module('Path Drawing Commands');
+////////////////////////////////////////////////////////////////////////////////
+// Path Drawing Commands
 
 test('path.lineTo(point);', function() {
     var path = new Path();

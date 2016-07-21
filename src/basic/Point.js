@@ -46,7 +46,7 @@ var Point = Base.extend(/** @lends Point# */{
      * coordinates.
      *
      * @name Point#initialize
-     * @param {array} array
+     * @param {Array} array
      *
      * @example
      * // Creating a point at x: 10, y: 5 using an array of numbers:
@@ -130,39 +130,63 @@ var Point = Base.extend(/** @lends Point# */{
      * @name Point#initialize
      */
     initialize: function Point(arg0, arg1) {
-        var type = typeof arg0;
+        var type = typeof arg0,
+            reading = this.__read,
+            read = 0;
         if (type === 'number') {
             var hasY = typeof arg1 === 'number';
-            this.x = arg0;
-            this.y = hasY ? arg1 : arg0;
-            if (this.__read)
-                this.__read = hasY ? 2 : 1;
+            this._set(arg0, hasY ? arg1 : arg0);
+            if (reading)
+                read = hasY ? 2 : 1;
         } else if (type === 'undefined' || arg0 === null) {
-            this.x = this.y = 0;
-            if (this.__read)
-                this.__read = arg0 === null ? 1 : 0;
+            this._set(0, 0);
+            if (reading)
+                read = arg0 === null ? 1 : 0;
         } else {
-            if (Array.isArray(arg0)) {
-                this.x = arg0[0];
-                this.y = arg0.length > 1 ? arg0[1] : arg0[0];
-            } else if (arg0.x != null) {
-                this.x = arg0.x;
-                this.y = arg0.y;
-            } else if (arg0.width != null) {
-                this.x = arg0.width;
-                this.y = arg0.height;
-            } else if (arg0.angle != null) {
-                this.x = arg0.length;
-                this.y = 0;
-                this.setAngle(arg0.angle);
+            var obj = type === 'string' ? arg0.split(/[\s,]+/) || [] : arg0;
+            read = 1;
+            if (Array.isArray(obj)) {
+                this._set(+obj[0], +(obj.length > 1 ? obj[1] : obj[0]));
+            } else if ('x' in obj) {
+                this._set(obj.x || 0, obj.y || 0);
+            } else if ('width' in obj) {
+                this._set(obj.width || 0, obj.height || 0);
+            } else if ('angle' in obj) {
+                this._set(obj.length || 0, 0);
+                this.setAngle(obj.angle || 0);
             } else {
-                this.x = this.y = 0;
-                if (this.__read)
-                    this.__read = 0;
+                this._set(0, 0);
+                read = 0;
             }
-            if (this.__read)
-                this.__read = 1;
         }
+        if (reading)
+            this.__read = read;
+        return this;
+    },
+
+    /**
+     * Sets the point to the passed values. Note that any sequence of parameters
+     * that is supported by the various {@link Point()} constructors also work
+     * for calls of `set()`.
+     *
+     * @function
+     */
+    set: '#initialize',
+
+    /**
+     * Internal helper function to directly set the underlying properties.
+     *
+     * Convention regarding {@link #set()} VS {@link #_set()}:
+     *
+     * - {@link #_set()} is for actually setting properties, e.g. on Point,
+     *   Size, so that derived classes can reuse other parts (e.g. SegmentPoint)
+     * - {@link #set()} is a shortcut to #initialize() on all basic types, to
+     *   offer the same amount of flexibility when setting values.
+     */
+    _set: function(x, y) {
+        this.x = x;
+        this.y = y;
+        return this;
     },
 
     /**
@@ -178,12 +202,6 @@ var Point = Base.extend(/** @lends Point# */{
      * @name Point#y
      * @type Number
      */
-
-    set: function(x, y) {
-        this.x = x;
-        this.y = y;
-        return this;
-    },
 
     /**
      * Checks whether the coordinates of the point are equal to that of the
@@ -256,7 +274,7 @@ var Point = Base.extend(/** @lends Point# */{
         // assignment, so LinkedPoint does not report changes twice.
         if (this.isZero()) {
             var angle = this._angle || 0;
-            this.set(
+            this._set(
                 Math.cos(angle) * length,
                 Math.sin(angle) * length
             );
@@ -266,7 +284,7 @@ var Point = Base.extend(/** @lends Point# */{
             // x and y are 0
             if (Numerical.isZero(scale))
                 this.getAngle();
-            this.set(
+            this._set(
                 this.x * scale,
                 this.y * scale
             );
@@ -346,7 +364,7 @@ var Point = Base.extend(/** @lends Point# */{
             var length = this.getLength();
             // Use #set() instead of direct assignment of x/y, so LinkedPoint
             // does not report changes twice.
-            this.set(
+            this._set(
                 Math.cos(angle) * length,
                 Math.sin(angle) * length
             );
@@ -693,7 +711,7 @@ var Point = Base.extend(/** @lends Point# */{
     isClose: function(/* point, tolerance */) {
         var point = Point.read(arguments),
             tolerance = Base.read(arguments);
-        return this.getDistance(point) < tolerance;
+        return this.getDistance(point) <= tolerance;
     },
 
     /**
@@ -782,13 +800,35 @@ var Point = Base.extend(/** @lends Point# */{
     },
 
     /**
-     * This property is only present if the point is an anchor or control point
-     * of a {@link Segment} or a {@link Curve}. In this case, it returns
-     * {@true it is selected}
+     * This property is only valid if the point is an anchor or handle point
+     * of a {@link Segment} or a {@link Curve}, or the position of an
+     * {@link Item}, as returned by {@link Item#position},
+     * {@link Segment#point}, {@link Segment#handleIn},
+     * {@link Segment#handleOut}, {@link Curve#point1}, {@link Curve#point2},
+     * {@link Curve#handle1}, {@link Curve#handle2}.
+     *
+     * In those cases, it returns {@true if it the point is selected}.
+     *
+     * Paper.js renders selected points on top of your project. This is very
+     * useful when debugging.
      *
      * @name Point#selected
      * @property
-     * @return {Boolean} {@true if the point is selected}
+     * @type Boolean
+     * @default false
+     *
+     * @example {@paperscript}
+     * var path = new Path.Circle({
+     *     center: [80, 50],
+     *     radius: 40
+     * });
+     *
+     * // Select the third segment point:
+     * path.segments[2].point.selected = true;
+     *
+     * // Select the item's position, which is the pivot point
+     * // around which it is transformed:
+     * path.position.selected = true;
      */
 
     /**
@@ -963,7 +1003,7 @@ var Point = Base.extend(/** @lends Point# */{
  * through setting itself again on the setter that corresponds to the getter
  * that produced this LinkedPoint.
  *
- * @ignore
+ * @private
  */
 var LinkedPoint = Point.extend({
     // Have LinkedPoint appear as a normal Point in debugging
@@ -974,7 +1014,8 @@ var LinkedPoint = Point.extend({
         this._setter = setter;
     },
 
-    set: function(x, y, _dontNotify) {
+    // See Point#_set() for an explanation of #_set():
+    _set: function(x, y, _dontNotify) {
         this._x = x;
         this._y = y;
         if (!_dontNotify)
@@ -998,5 +1039,17 @@ var LinkedPoint = Point.extend({
     setY: function(y) {
         this._y = y;
         this._owner[this._setter](this);
+    },
+
+    isSelected: function() {
+        return !!(this._owner._selection & this._getSelection());
+    },
+
+    setSelected: function(selected) {
+        this._owner.changeSelection(this._getSelection(), selected);
+    },
+
+    _getSelection: function() {
+        return this._setter === 'setPosition' ? /*#=*/ItemSelection.POSITION : 0;
     }
 });

@@ -219,7 +219,11 @@ test('Color#importJSON()', function() {
         // that runs between the two points we defined earlier:
         fillColor: {
             gradient: {
-                stops: ['yellow', 'red', 'blue']
+                stops: [
+                    ['yellow', 0],
+                    ['red', 0.5],
+                    ['blue', 1]
+                ]
             },
             origin: topLeft,
             destination: bottomRight
@@ -240,4 +244,15 @@ test('Color#importJSON()', function() {
     equals(function() {
         return color.equals(path.fillColor);
     }, true);
+});
+
+test('Path#importJSON()', function() {
+    var path = new Path();
+    var layer = project.activeLayer;
+    equals(function() { return path.parent === layer; }, true);
+    path.importJSON('["Path",{"segments":[[[50,100],[0,27.61424],[0,-27.61424]],[[100,50],[-27.61424,0],[27.61424,0]],[[150,100],[0,-27.61424],[0,27.61424]],[[100,150],[27.61424,0],[-27.61424,0]]],"closed":true,"fillColor":[1,0,0]}]');
+    equals(function() { return path.bounds; }, { x: 50, y: 50, width: 100, height: 100 });
+    equals(function() { return path.fillColor; }, { red: 1, green: 0, blue: 0 });
+    equals(function() { return layer.firstChild === path; }, true);
+    equals(function() { return path.parent === layer; }, true);
 });

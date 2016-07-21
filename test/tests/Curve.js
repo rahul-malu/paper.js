@@ -160,15 +160,22 @@ test('Curve#getTimeAt()', function() {
     ]).firstCurve;
 
     for (var f = 0; f <= 1; f += 0.1) {
-        var o1 = curve.length * f;
-        var o2 = -curve.length * (1 - f);
+        var o1 = curve.length * f,
+            o2 = -curve.length * (1 - f),
+            t1 = curve.getTimeAt(o1),
+            t2 = curve.getTimeAt(o2);
         var message = 'Curve-time parameter at offset ' + o1
-                + ' should be the same value as at offset' + o2;
-        equals(curve.getTimeAt(o1), curve.getTimeAt(o2), message,
-                Numerical.CURVETIME_EPSILON);
+                + ' should be the same value as at offset ' + o2;
+        equals(t1, t2, message, Numerical.CURVETIME_EPSILON);
+        equals(function() { return curve.getOffsetAtTime(t1); }, o1);
+        equals(function() { return curve.getOffsetAtTime(t2); }, curve.length + o2);
         // Legacy version:
         equals(curve.getParameterAt(o1), curve.getParameterAt(o2),
                 'Legacy: ' + message, Numerical.CURVETIME_EPSILON);
+        // Test other methods with negatives offsets
+        equals(curve.getTangentAt(o1), curve.getTangentAt(o2),
+                'Tangent at offset ' + o1
+                + ' should be the same value as at offset ' + o2);
     }
 
     equals(curve.getTimeAt(curve.length + 1), null,
@@ -256,4 +263,26 @@ test('Curve#getTimeOf()', function() {
         equals(point1, point2, 'curve.getLocationAt(curve.getTimeOf('
                 + point1 + ')).point;');
     }
+});
+
+test('Curve#getTimeAt() with straight curve', function() {
+    // #1000:
+    var curve = new Curve([
+        1584.4999999999998, 1053.2499999999995,
+        1584.4999999999998,1053.2499999999995,
+        1520.5,1053.2499999999995,
+        1520.5,1053.2499999999995
+    ]);
+    var offset = 63.999999999999716;
+    equals(function() { return offset < curve.length; }, true);
+    equals(function() { return curve.getTimeAt(offset); }, 1);
+});
+
+test('Curve#getPartLength() with straight curve', function() {
+    var curve = new Curve([0, 0, 0, 0, 64, 0, 64, 0]);
+    equals(function() { return curve.getPartLength(0.0, 0.25); }, 10);
+    equals(function() { return curve.getPartLength(0.25, 0.5); }, 22);
+    equals(function() { return curve.getPartLength(0.25, 0.75); }, 44);
+    equals(function() { return curve.getPartLength(0.5, 0.75); }, 22);
+    equals(function() { return curve.getPartLength(0.75, 1); }, 10);
 });

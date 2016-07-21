@@ -118,13 +118,13 @@ var Curve = Base.extend(/** @lends Curve# */{
         this._segment2 = seg2 || new Segment(point2, handle2, null);
     },
 
-    _serialize: function(options) {
+    _serialize: function(options, dictionary) {
         // If it has no handles, only serialize points, otherwise handles too.
         return Base.serialize(this.hasHandles()
                 ? [this.getPoint1(), this.getHandle1(), this.getHandle2(),
                     this.getPoint2()]
                 : [this.getPoint1(), this.getPoint2()],
-                options, true);
+                options, true, dictionary);
     },
 
     _changed: function() {
@@ -166,7 +166,7 @@ var Curve = Base.extend(/** @lends Curve# */{
                 handleOut = segment2._handleOut;
             removed = segment2.remove();
             if (removed)
-                this._segment1._handleOut.set(handleOut.x, handleOut.y);
+                this._segment1._handleOut.set(handleOut);
         }
         return removed;
     },
@@ -182,8 +182,7 @@ var Curve = Base.extend(/** @lends Curve# */{
     },
 
     setPoint1: function(/* point */) {
-        var point = Point.read(arguments);
-        this._segment1._point.set(point.x, point.y);
+        this._segment1._point.set(Point.read(arguments));
     },
 
     /**
@@ -197,8 +196,7 @@ var Curve = Base.extend(/** @lends Curve# */{
     },
 
     setPoint2: function(/* point */) {
-        var point = Point.read(arguments);
-        this._segment2._point.set(point.x, point.y);
+        this._segment2._point.set(Point.read(arguments));
     },
 
     /**
@@ -212,8 +210,7 @@ var Curve = Base.extend(/** @lends Curve# */{
     },
 
     setHandle1: function(/* point */) {
-        var point = Point.read(arguments);
-        this._segment1._handleOut.set(point.x, point.y);
+        this._segment1._handleOut.set(Point.read(arguments));
     },
 
     /**
@@ -227,8 +224,7 @@ var Curve = Base.extend(/** @lends Curve# */{
     },
 
     setHandle2: function(/* point */) {
-        var point = Point.read(arguments);
-        this._segment2._handleIn.set(point.x, point.y);
+        this._segment2._handleIn.set(Point.read(arguments));
     },
 
     /**
@@ -487,8 +483,8 @@ var Curve = Base.extend(/** @lends Curve# */{
                 // Adjust the handles on the existing segments. The new segment
                 // will be inserted between the existing segment1 and segment2:
                 // Convert absolute -> relative
-                segment1._handleOut.set(left[2] - left[0], left[3] - left[1]);
-                segment2._handleIn.set(right[4] - right[6],right[5] - right[7]);
+                segment1._handleOut._set(left[2] - left[0], left[3] - left[1]);
+                segment2._handleIn._set(right[4] - right[6],right[5] - right[7]);
             }
             // Create the new segment:
             var x = left[6], y = left[7],
@@ -506,6 +502,7 @@ var Curve = Base.extend(/** @lends Curve# */{
             } else {
                 // otherwise create it from the result of split
                 this._segment2 = segment;
+                this._changed();
                 res = new Curve(segment, segment2);
             }
         }
@@ -542,7 +539,7 @@ var Curve = Base.extend(/** @lends Curve# */{
 
     // TODO: Remove in 1.0.0? (deprecated January 2016):
     /**
-     * @deprecated, use use {@link #divideAt(offset)} or
+     * @deprecated use use {@link #divideAt(offset)} or
      * {@link #divideAtTime(time)} instead.
      */
     divide: function(offset, isTime) {
@@ -552,7 +549,7 @@ var Curve = Base.extend(/** @lends Curve# */{
 
     // TODO: Remove in 1.0.0? (deprecated January 2016):
     /**
-     * @deprecated, use use {@link #splitAt(offset)} or
+     * @deprecated use use {@link #splitAt(offset)} or
      * {@link #splitAtTime(time)} instead.
      */
     split: function(offset, isTime) {
@@ -575,8 +572,8 @@ var Curve = Base.extend(/** @lends Curve# */{
      * turning the curve into a straight line.
      */
     clearHandles: function() {
-        this._segment1._handleOut.set(0, 0);
-        this._segment2._handleIn.set(0, 0);
+        this._segment1._handleOut._set(0, 0);
+        this._segment2._handleIn._set(0, 0);
     },
 
 statics: /** @lends Curve */{
@@ -621,6 +618,57 @@ statics: /** @lends Curve */{
         ];
     },
 
+    /**
+     * Splits the specified curve values into curves that are monotone in the
+     * specified coordinate direction.
+     *
+     * @param {Number[]} v the curve values, as returned by
+     *     {@link Curve#getValues()}
+     * @param {Number} [dir=0] the direction in which the curves should be
+     *     monotone, `0`: monotone in x-direction, `1`: monotone in y-direction
+     * @return {Number[][]} an array of curve value arrays of the resulting
+     *     monotone curve. If the original curve was already monotone, an array
+     *     only containing its values are returned.
+     */
+    getMonoCurves: function(v, dir) {
+        var curves = [],
+            // Determine the ordinate index in the curve values array.
+            io = dir ? 0 : 1,
+            o0 = v[io],
+            o1 = v[io + 2],
+            o2 = v[io + 4],
+            o3 = v[io + 6];
+        if ((o0 >= o1) === (o1 >= o2) && (o1 >= o2) === (o2 >= o3)
+                || Curve.isStraight(v)) {
+            // Straight curves and curves with all involved points ordered
+            // in coordinate direction are guaranteed to be monotone.
+            curves.push(v);
+        } else {
+            var a = 3 * (o1 - o2) - o0 + o3,
+                b = 2 * (o0 + o2) - 4 * o1,
+                c = o1 - o0,
+                tMin = 4e-7,
+                tMax = 1 - tMin,
+                roots = [],
+                n = Numerical.solveQuadratic(a, b, c, roots, tMin, tMax);
+            if (n === 0) {
+                curves.push(v);
+            } else {
+                roots.sort();
+                var t = roots[0],
+                    parts = Curve.subdivide(v, t);
+                curves.push(parts[0]);
+                if (n > 1) {
+                    t = (roots[1] - t) / (1 - t);
+                    parts = Curve.subdivide(parts[1], t);
+                    curves.push(parts[0]);
+                }
+                curves.push(parts[1]);
+            }
+        }
+        return curves;
+    },
+
     // Converts from the point coordinates (p1, c1, c2, p2) for one axis to
     // the polynomial coefficients and solves the polynomial for val
     solveCubic: function (v, coord, val, roots, min, max) {
@@ -628,10 +676,16 @@ statics: /** @lends Curve */{
             c1 = v[coord + 2],
             c2 = v[coord + 4],
             p2 = v[coord + 6],
-            c = 3 * (c1 - p1),
-            b = 3 * (c2 - c1) - c,
-            a = p2 - p1 - c - b;
-        return Numerical.solveCubic(a, b, c, p1 - val, roots, min, max);
+            res = 0;
+        // If val is outside the curve values, no solution is possible.
+        if (  !(p1 < val && p2 < val && c1 < val && c2 < val ||
+                p1 > val && p2 > val && c1 > val && c2 > val)) {
+            var c = 3 * (c1 - p1),
+                b = 3 * (c2 - c1) - c,
+                a = p2 - p1 - c - b;
+            res = Numerical.solveCubic(a, b, c, p1 - val, roots, min, max);
+        }
+        return res;
     },
 
     getTimeOf: function(v, point) {
@@ -761,12 +815,9 @@ statics: /** @lends Curve */{
             c1x = v[2], c1y = v[3],
             c2x = v[4], c2y = v[5],
             p2x = v[6], p2y = v[7];
-        return (3.0 * c1y * p1x - 1.5 * c1y * c2x
-              - 1.5 * c1y * p2x - 3.0 * p1y * c1x
-              - 1.5 * p1y * c2x - 0.5 * p1y * p2x
-              + 1.5 * c2y * p1x + 1.5 * c2y * c1x
-              - 3.0 * c2y * p2x + 0.5 * p2y * p1x
-              + 1.5 * p2y * c1x + 3.0 * p2y * c2x) / 10;
+        return 3 * ((p2y - p1y) * (c1x + c2x) - (p2x - p1x) * (c1y + c2y)
+                + c1y * (p1x - c2x) - c1x * (p1y - c2y)
+                + p2y * (c2x + p1x / 3) - p2x * (c2y + p1y / 3)) / 20;
     },
 
     getBounds: function(v) {
@@ -786,7 +837,6 @@ statics: /** @lends Curve */{
      * NOTE: padding is only used for Path.getBounds().
      */
     _addBounds: function(v0, v1, v2, v3, coord, padding, min, max, roots) {
-        padding /= 2; // strokePadding is in width, not radius
         // Code ported and further optimised from:
         // http://blog.hackers-cafe.net/2009/06/how-to-calculate-bezier-curves-bounding.html
         function add(value, padding) {
@@ -797,32 +847,49 @@ statics: /** @lends Curve */{
             if (right > max[coord])
                 max[coord] = right;
         }
-        // Calculate derivative of our bezier polynomial, divided by 3.
-        // Doing so allows for simpler calculations of a, b, c and leads to the
-        // same quadratic roots.
-        var a = 3 * (v1 - v2) - v0 + v3,
-            b = 2 * (v0 + v2) - 4 * v1,
-            c = v1 - v0,
-            count = Numerical.solveQuadratic(a, b, c, roots),
-            // Add some tolerance for good roots, as t = 0, 1 are added
-            // separately anyhow, and we don't want joins to be added with radii
-            // in getStrokeBounds()
-            tMin = /*#=*/Numerical.CURVETIME_EPSILON,
-            tMax = 1 - tMin;
-        // Only add strokeWidth to bounds for points which lie within 0 < t < 1
-        // The corner cases for cap and join are handled in getStrokeBounds()
-        add(v3, 0);
-        for (var i = 0; i < count; i++) {
-            var t = roots[i],
-                u = 1 - t;
-            // Test for good roots and only add to bounds if good.
-            if (tMin < t && t < tMax)
-                // Calculate bezier polynomial at t.
-                add(u * u * u * v0
-                    + 3 * u * u * t * v1
-                    + 3 * u * t * t * v2
-                    + t * t * t * v3,
-                    padding);
+
+        padding /= 2; // strokePadding is in width, not radius
+        var minPad = min[coord] - padding,
+            maxPad = max[coord] + padding;
+        // Perform a rough bounds checking first: The curve can only extend the
+        // current bounds if at least one value is outside the min-max range.
+        if (    v0 < minPad || v1 < minPad || v2 < minPad || v3 < minPad ||
+                v0 > maxPad || v1 > maxPad || v2 > maxPad || v3 > maxPad) {
+            if (v1 < v0 != v1 < v3 && v2 < v0 != v2 < v3) {
+                // If the values of a curve are sorted, the extrema are simply
+                // the start and end point.
+                add(v0, padding);
+                add(v3, padding);
+            } else {
+                // Calculate derivative of our bezier polynomial, divided by 3.
+                // Doing so allows for simpler calculations of a, b, c and leads
+                // to the same quadratic roots.
+                var a = 3 * (v1 - v2) - v0 + v3,
+                    b = 2 * (v0 + v2) - 4 * v1,
+                    c = v1 - v0,
+                    count = Numerical.solveQuadratic(a, b, c, roots),
+                    // Add some tolerance for good roots, as t = 0, 1 are added
+                    // separately anyhow, and we don't want joins to be added
+                    // with radii in getStrokeBounds()
+                    tMin = /*#=*/Numerical.CURVETIME_EPSILON,
+                    tMax = 1 - tMin;
+                // Only add strokeWidth to bounds for points which lie within 0
+                // < t < 1 The corner cases for cap and join are handled in
+                // getStrokeBounds()
+                add(v3, 0);
+                for (var i = 0; i < count; i++) {
+                    var t = roots[i],
+                        u = 1 - t;
+                    // Test for good roots and only add to bounds if good.
+                    if (tMin < t && t < tMax)
+                    // Calculate bezier polynomial at t.
+                        add(u * u * u * v0
+                            + 3 * u * u * t * v1
+                            + 3 * u * t * t * v2
+                            + t * t * t * v3,
+                            padding);
+                }
+            }
         }
     }
 }}, Base.each(
@@ -871,7 +938,7 @@ statics: /** @lends Curve */{
      */
 
     /**
-     * The rough bounding rectangle of the curve that is shure to include all of
+     * The rough bounding rectangle of the curve that is sure to include all of
      * the drawing, including stroke width.
      *
      * @name Curve#roughBounds
@@ -883,22 +950,29 @@ statics: /** @lends Curve */{
         if (h1.isZero() && h2.isZero()) {
             // No handles.
             return true;
-        } else if (l.isZero()) {
-            // Zero-length line, with some handles defined.
-            return false;
-        } else if (h1.isCollinear(l) && h2.isCollinear(l)) {
-            // Collinear handles. Project them onto line to see if they are
-            // within the line's range:
-            var div = l.dot(l),
-                p1 = l.dot(h1) / div,
-                p2 = l.dot(h2) / div;
-            return p1 >= 0 && p1 <= 1 && p2 <= 0 && p2 >= -1;
+        } else {
+            var v = l.getVector(),
+                epsilon = /*#=*/Numerical.GEOMETRIC_EPSILON;
+            if (v.isZero()) {
+                // Zero-length line, with some handles defined.
+                return false;
+            } else if (l.getDistance(h1) < epsilon
+                    && l.getDistance(h2) < epsilon) {
+                // Collinear handles: Instead of v.isCollinear(h1) checks, we
+                // need to measure the distance to the line, in order to be able
+                // to use the same epsilon as in Curve#getTimeOf(), see #1066.
+                // Project them onto line to see if they are within its range:
+                var div = v.dot(v),
+                    p1 = v.dot(h1) / div,
+                    p2 = v.dot(h2) / div;
+                return p1 >= 0 && p1 <= 1 && p2 <= 0 && p2 >= -1;
+            }
         }
         return false;
     },
 
     isLinear: function(l, h1, h2) {
-        var third = l.divide(3);
+        var third = l.getVector().divide(3);
         return h1.equals(third) && h2.negate().equals(third);
     }
 }, function(test, name) {
@@ -906,7 +980,7 @@ statics: /** @lends Curve */{
     this[name] = function() {
         var seg1 = this._segment1,
             seg2 = this._segment2;
-        return test(seg2._point.subtract(seg1._point),
+        return test(new Line(seg1._point, seg2._point),
                 seg1._handleOut, seg2._handleIn);
     };
 
@@ -914,7 +988,7 @@ statics: /** @lends Curve */{
     this.statics[name] = function(v) {
         var p1x = v[0], p1y = v[1],
             p2x = v[6], p2y = v[7];
-        return test(new Point(p2x - p1x, p2y - p1y),
+        return test(new Line(p1x, p1y, p2x, p2y),
                 new Point(v[2] - p1x, v[3] - p1y),
                 new Point(v[4] - p2x, v[5] - p2y));
     };
@@ -1041,9 +1115,20 @@ statics: /** @lends Curve */{
 
     // TODO: Remove in 1.0.0? (deprecated January 2016):
     /**
-     * @deprecated, use use {@link #getTimeOf(point)} instead.
+     * @deprecated use use {@link #getTimeOf(point)} instead.
      */
     getParameterAt: '#getTimeAt',
+
+    /**
+     * Calculates the curve offset at the specified curve-time parameter on
+     * the curve.
+     *
+     * @param {Number} time the curve-time parameter on the curve
+     * @return {Number} the curve offset at the specified the location
+     */
+    getOffsetAtTime: function(t) {
+        return this.getPartLength(0, t);
+    },
 
     /**
      * Returns the curve location of the specified point if it lies on the
@@ -1083,7 +1168,7 @@ statics: /** @lends Curve */{
 
     // TODO: Remove in 1.0.0? (deprecated January 2016):
     /**
-     * @deprecated, use use {@link #getTimeOf(point)} instead.
+     * @deprecated use use {@link #getTimeOf(point)} instead.
      */
     getParameterOf: '#getTimeOf',
 
@@ -1256,7 +1341,7 @@ new function() { // Injection scope for various curve evaluation methods
             this[name + 'At'] = function(location, _isTime) {
                 var values = this.getValues();
                 return Curve[name](values, _isTime ? location
-                        : Curve.getTimeAt(values, location, 0));
+                        : Curve.getTimeAt(values, location));
             };
 
             this[name + 'AtTime'] = function(time) {
@@ -1395,19 +1480,29 @@ new function() { // Scope for methods that require private functions
 
     return { statics: {
 
-        getLength: function(v, a, b) {
+        getLength: function(v, a, b, ds) {
             if (a === undefined)
                 a = 0;
             if (b === undefined)
                 b = 1;
-            if (a === 0 && b === 1 && Curve.isStraight(v)) {
+            if (Curve.isStraight(v)) {
+                // Sub-divide the linear curve at a and b, so we can simply
+                // calculate the Pythagorean Theorem to get the range's length.
+                var c = v;
+                if (b < 1) {
+                    c = Curve.subdivide(c, b)[0]; // left
+                    a /= b; // Scale parameter to new sub-curve.
+                }
+                if (a > 0) {
+                    c = Curve.subdivide(c, a)[1]; // right
+                }
                 // The length of straight curves can be calculated more easily.
-                var dx = v[6] - v[0], // p2x - p1x
-                    dy = v[7] - v[1]; // p2y - p1y
+                var dx = c[6] - c[0], // p2x - p1x
+                    dy = c[7] - c[1]; // p2y - p1y
                 return Math.sqrt(dx * dx + dy * dy);
             }
-            var ds = getLengthIntegrand(v);
-            return Numerical.integrate(ds, a, b, getIterations(a, b));
+            return Numerical.integrate(ds || getLengthIntegrand(v), a, b,
+                    getIterations(a, b));
         },
 
         getTimeAt: function(v, offset, start) {
@@ -1418,6 +1513,7 @@ new function() { // Scope for methods that require private functions
             // See if we're going forward or backward, and handle cases
             // differently
             var abs = Math.abs,
+                epsilon = /*#=*/Numerical.EPSILON,
                 forward = offset > 0,
                 a = forward ? start : 0,
                 b = forward ? 1 : start,
@@ -1425,12 +1521,12 @@ new function() { // Scope for methods that require private functions
                 // lengths in f(t) below.
                 ds = getLengthIntegrand(v),
                 // Get length of total range
-                rangeLength = Numerical.integrate(ds, a, b,
-                        getIterations(a, b));
-            if (abs(offset - rangeLength) < /*#=*/Numerical.EPSILON) {
+                rangeLength = Curve.getLength(v, a, b, ds),
+                diff = abs(offset) - rangeLength;
+            if (abs(diff) < epsilon) {
                 // Matched the end:
                 return forward ? b : a;
-            } else if (abs(offset) > rangeLength) {
+            } else if (diff > epsilon) {
                 // We're out of bounds.
                 return null;
             }
@@ -1450,7 +1546,7 @@ new function() { // Scope for methods that require private functions
                 return length - offset;
             }
             // Start with out initial guess for x.
-            // NOTE: guess is a negative value when not looking forward.
+            // NOTE: guess is a negative value when looking backwards.
             return Numerical.findRoot(f, ds, start + guess, a, b, 32,
                     /*#=*/Numerical.EPSILON);
         },
@@ -1533,13 +1629,13 @@ new function() { // Scope for intersection using bezier fat-line clipping
     }
 
     function addCurveIntersections(v1, v2, c1, c2, locations, param, tMin, tMax,
-            uMin, uMax, reverse, recursion) {
-        // Avoid deeper recursion.
-        // NOTE: @iconexperience determined that more than 20 recursions are
-        // needed sometimes, depending on the tDiff threshold values further
-        // below when determining which curve converges the least: #565, #899
-        if (++recursion >= 26)
-            return;
+            uMin, uMax, flip, recursion, calls) {
+        // Avoid deeper recursion, by counting the total amount of recursions,
+        // as well as the total amount of calls, to avoid massive call-trees as
+        // suggested by @iconexperience in #904#issuecomment-225283430.
+        // See also: #565 #899 #1074
+        if (++recursion >= 48 || ++calls > 4096)
+            return calls;
         // Let P be the first curve and Q be the second
         var q0x = v2[0], q0y = v2[1], q3x = v2[6], q3y = v2[7],
             getSignedDistance = Line.getSignedDistance,
@@ -1550,9 +1646,9 @@ new function() { // Scope for intersection using bezier fat-line clipping
             factor = d1 * d2 > 0 ? 3 / 4 : 4 / 9,
             dMin = factor * Math.min(0, d1, d2),
             dMax = factor * Math.max(0, d1, d2),
-            // Calculate non-parametric bezier curve D(ti, di(t)) - di(t) is the
-            // distance of P from the baseline l of the fat-line, ti is equally
-            // spaced in [0, 1]
+            // Calculate non-parametric bezier curve D(ti, di(t)):
+            // - di(t) is the distance of P from baseline l of the fat-line
+            // - ti is equally spaced in [0, 1]
             dp0 = getSignedDistance(q0x, q0y, q3x, q3y, v1[0], v1[1]),
             dp1 = getSignedDistance(q0x, q0y, q3x, q3y, v1[2], v1[3]),
             dp2 = getSignedDistance(q0x, q0y, q3x, q3y, v1[4], v1[5]),
@@ -1566,14 +1662,14 @@ new function() { // Scope for intersection using bezier fat-line clipping
         // Stop iteration if all points and control points are collinear.
         if (d1 === 0 && d2 === 0
                 && dp0 === 0 && dp1 === 0 && dp2 === 0 && dp3 === 0
-            // Clip the convex-hull with dMin and dMax, taking into account that
-            // there will be no intersections if one of the tvalues are null.
+            // Clip convex-hull with dMin and dMax, taking into account that
+            // there will be no intersections if one of the results is null.
             || (tMinClip = clipConvexHull(top, bottom, dMin, dMax)) == null
             || (tMaxClip = clipConvexHull(top.reverse(), bottom.reverse(),
                 dMin, dMax)) == null)
-            return;
-        // tMin and tMax are within the range (0, 1). We need to project it
-        // to the original parameter range for v2.
+            return calls;
+        // tMin and tMax are within the range (0, 1). Project it back to the
+        // original parameter range for v2.
         var tMinNew = tMin + (tMax - tMin) * tMinClip,
             tMaxNew = tMin + (tMax - tMin) * tMaxClip;
         if (Math.max(uMax - uMin, tMaxNew - tMinNew)
@@ -1581,13 +1677,13 @@ new function() { // Scope for intersection using bezier fat-line clipping
             // We have isolated the intersection with sufficient precision
             var t = (tMinNew + tMaxNew) / 2,
                 u = (uMin + uMax) / 2;
-            // As we've been clipping v1 and v2, we need to pass on the original
-            // curves here again to match the parameter space of t1 and t2.
+            // As v1 and v2 were clipped, reset them again to the original
+            // curve values to match the parameter space of t1 and t2:
             v1 = c1.getValues();
             v2 = c2.getValues();
             addLocation(locations, param,
-                reverse ? v2 : v1, reverse ? c2 : c1, reverse ? u : t, null,
-                reverse ? v1 : v2, reverse ? c1 : c2, reverse ? t : u, null);
+                    flip ? v2 : v1, flip ? c2 : c1, flip ? u : t, null,
+                    flip ? v1 : v2, flip ? c1 : c2, flip ? t : u, null);
         } else {
             // Apply the result of the clipping to curve 1:
             v1 = Curve.getPart(v1, tMinClip, tMaxClip);
@@ -1596,27 +1692,37 @@ new function() { // Scope for intersection using bezier fat-line clipping
                 if (tMaxNew - tMinNew > uMax - uMin) {
                     var parts = Curve.subdivide(v1, 0.5),
                         t = (tMinNew + tMaxNew) / 2;
-                    addCurveIntersections(
+                    calls = addCurveIntersections(
                             v2, parts[0], c2, c1, locations, param,
-                            uMin, uMax, tMinNew, t, !reverse, recursion);
-                    addCurveIntersections(
+                            uMin, uMax, tMinNew, t, !flip, recursion, calls);
+                    calls = addCurveIntersections(
                             v2, parts[1], c2, c1, locations, param,
-                            uMin, uMax, t, tMaxNew, !reverse, recursion);
+                            uMin, uMax, t, tMaxNew, !flip, recursion, calls);
                 } else {
                     var parts = Curve.subdivide(v2, 0.5),
                         u = (uMin + uMax) / 2;
-                    addCurveIntersections(
+                    calls = addCurveIntersections(
                             parts[0], v1, c2, c1, locations, param,
-                            uMin, u, tMinNew, tMaxNew, !reverse, recursion);
-                    addCurveIntersections(
+                            uMin, u, tMinNew, tMaxNew, !flip, recursion, calls);
+                    calls = addCurveIntersections(
                             parts[1], v1, c2, c1, locations, param,
-                            u, uMax, tMinNew, tMaxNew, !reverse, recursion);
+                            u, uMax, tMinNew, tMaxNew, !flip, recursion, calls);
                 }
             } else { // Iterate
-                addCurveIntersections(v2, v1, c2, c1, locations, param,
-                        uMin, uMax, tMinNew, tMaxNew, !reverse, recursion);
+                if (uMax - uMin >= /*#=*/Numerical.CLIPPING_EPSILON) {
+                    calls = addCurveIntersections(
+                        v2, v1, c2, c1, locations, param,
+                        uMin, uMax, tMinNew, tMaxNew, !flip, recursion, calls);
+                } else {
+                    // The interval on the other curve is already tight enough,
+                    // therefore we keep iterating on the same curve.
+                    calls = addCurveIntersections(
+                        v1, v2, c1, c2, locations, param,
+                        tMinNew, tMaxNew, uMin, uMax, flip, recursion, calls);
+                }
             }
         }
+        return calls;
     }
 
     /**
@@ -1834,8 +1940,8 @@ new function() { // Scope for intersection using bezier fat-line clipping
                         v1, v2, c1, c2, locations, param,
                         // Define the defaults for these parameters of
                         // addCurveIntersections():
-                        // tMin, tMax, uMin, uMax, reverse, recursion
-                        0, 1, 0, 1, 0, 0);
+                        // tMin, tMax, uMin, uMax, flip, recursion, calls
+                        0, 1, 0, 1, 0, 0, 0);
             // We're done if we handle lines and found one intersection already:
             // #805#issuecomment-148503018
             if (straight && locations.length > before)

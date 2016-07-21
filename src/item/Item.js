@@ -51,22 +51,33 @@ var Item = Base.extend(Emitter, /** @lends Item# */{
     _applyMatrix: true,
     _canApplyMatrix: true,
     _canScaleStroke: false,
-    _boundsSelected: false,
+    _pivot: null,
+    _visible: true,
+    _blendMode: 'normal',
+    _opacity: 1,
+    _locked: false,
+    _guide: false,
+    _clipMask: false,
+    _selection: 0,
+    // Controls whether bounds should appear selected when the item is selected.
+    // This is only turned off for Group, Layer and PathItem, where it can be
+    // selected separately by setting item.bounds.selected = true;
+    _selectBounds: true,
     _selectChildren: false,
     // Provide information about fields to be serialized, with their defaults
-    // that can be ommited.
+    // that can be omitted.
     _serializeFields: {
         name: null,
         applyMatrix: null,
         matrix: new Matrix(),
         pivot: null,
-        locked: false,
         visible: true,
         blendMode: 'normal',
         opacity: 1,
+        locked: false,
         guide: false,
-        selected: false,
         clipMask: false,
+        selected: false,
         data: {}
     }
 },
@@ -146,7 +157,7 @@ new function() { // Injection scope for various item event handlers
             this._setProject(project);
         } else {
             (hasProps && props.parent || project)
-                    ._insertItem(undefined, this, true, true);
+                    ._insertItem(undefined, this, true); // _created = true
         }
         // Filter out Item.NO_INSERT before _set(), for performance reasons.
         if (hasProps && props !== Item.NO_INSERT) {
@@ -165,6 +176,8 @@ new function() { // Injection scope for various item event handlers
 
         function serialize(fields) {
             for (var key in fields) {
+                // value is the default value, only serialize if the current
+                // value is different from it.
                 var value = that[key];
                 // Style#leading is a special case, as its default value is
                 // dependent on the fontSize. Handle this here separately.
@@ -196,7 +209,7 @@ new function() { // Injection scope for various item event handlers
      * @param {ChangeFlag} flags describes what exactly has changed
      */
     _changed: function(flags) {
-        var symbol = this._parentSymbol,
+        var symbol = this._symbol,
             cacheParent = this._parent || symbol,
             project = this._project;
         if (flags & /*#=*/ChangeFlag.GEOMETRY) {
@@ -226,8 +239,8 @@ new function() { // Injection scope for various item event handlers
     },
 
     /**
-     * Sets those properties of the passed object literal on this item to
-     * the values defined in the object literal, if the item has property of the
+     * Sets the properties of the passed object literal on this item to the
+     * values defined in the object literal, if the item has property of the
      * given name (or a setter defined for it).
      *
      * @param {Object} props
@@ -387,7 +400,7 @@ new function() { // Injection scope for various item event handlers
     },
 
     setStyle: function(style) {
-        // Don't access _style directly so Path#getStyle() can be overriden for
+        // Don't access _style directly so Path#getStyle() can be overridden for
         // CompoundPaths.
         this.getStyle().set(style);
     }
@@ -425,7 +438,6 @@ new function() { // Injection scope for various item event handlers
      * @default false
      * @ignore
      */
-    _locked: false,
 
     /**
      * Specifies whether the item is visible. When set to `false`, the item
@@ -446,7 +458,6 @@ new function() { // Injection scope for various item event handlers
      * // Hide the path:
      * path.visible = false;
      */
-    _visible: true,
 
     /**
      * The blend mode with which the item is composited onto the canvas. Both
@@ -488,7 +499,6 @@ new function() { // Injection scope for various item event handlers
      * // Set the blend mode of circle2:
      * circle2.blendMode = 'multiply';
      */
-    _blendMode: 'normal',
 
     /**
      * The opacity of the item as a value between `0` and `1`.
@@ -516,7 +526,6 @@ new function() { // Injection scope for various item event handlers
      * // Make circle2 50% transparent:
      * circle2.opacity = 0.5;
      */
-    _opacity: 1,
 
     // TODO: Implement guides
     /**
@@ -528,7 +537,26 @@ new function() { // Injection scope for various item event handlers
      * @default true
      * @ignore
      */
-    _guide: false,
+
+    getSelection: function() {
+        return this._selection;
+    },
+
+    setSelection: function(selection) {
+        if (selection !== this._selection) {
+            this._selection = selection;
+            var project = this._project;
+            if (project) {
+                project._updateSelection(this);
+                this._changed(/*#=*/Change.ATTRIBUTE);
+            }
+        }
+    },
+
+    changeSelection: function(flag, selected) {
+        var selection = this._selection;
+        this.setSelection(selected ? selection | flag : selection & ~flag);
+    },
 
     /**
      * Specifies whether the item is selected. This will also return `true` for
@@ -563,39 +591,29 @@ new function() { // Injection scope for various item event handlers
                 if (children[i].isSelected())
                     return true;
         }
-        return this._selected;
+        return !!(this._selection & /*#=*/ItemSelection.ITEM);
     },
 
-    setSelected: function(selected, noChildren) {
-        // Don't recursively call #setSelected() if it was called with
-        // noChildren set to true, see #setFullySelected().
-        if (!noChildren && this._selectChildren) {
+    setSelected: function(selected) {
+        if (this._selectChildren) {
             var children = this._children;
             for (var i = 0, l = children.length; i < l; i++)
                 children[i].setSelected(selected);
         }
-        if ((selected = !!selected) ^ this._selected) {
-            this._selected = selected;
-            var project = this._project;
-            if (project) {
-                project._updateSelection(this);
-                this._changed(/*#=*/Change.ATTRIBUTE);
-            }
-        }
+        this.changeSelection(/*#=*/ItemSelection.ITEM, selected);
     },
 
-    _selected: false,
-
     isFullySelected: function() {
-        var children = this._children;
-        if (children && this._selected) {
+        var children = this._children,
+            selected = !!(this._selection & /*#=*/ItemSelection.ITEM);
+        if (children && selected) {
             for (var i = 0, l = children.length; i < l; i++)
                 if (!children[i].isFullySelected())
                     return false;
             return true;
         }
         // If there are no children, this is the same as #selected
-        return this._selected;
+        return selected;
     },
 
     setFullySelected: function(selected) {
@@ -604,8 +622,7 @@ new function() { // Injection scope for various item event handlers
             for (var i = 0, l = children.length; i < l; i++)
                 children[i].setFullySelected(selected);
         }
-        // Pass true for hidden noChildren argument
-        this.setSelected(selected, true);
+        this.changeSelection(/*#=*/ItemSelection.ITEM, selected);
     },
 
     /**
@@ -635,8 +652,6 @@ new function() { // Injection scope for various item event handlers
                 this._parent._changed(/*#=*/ChangeFlag.CLIPPING);
         }
     },
-
-    _clipMask: false,
 
     // TODO: get/setIsolated (print specific feature)
     // TODO: get/setKnockout (print specific feature)
@@ -764,13 +779,11 @@ new function() { // Injection scope for various item event handlers
      * @type Point
      * @default null
      */
-    getPivot: function(_dontLink) {
+    getPivot: function() {
         var pivot = this._pivot;
-        if (pivot) {
-            var ctor = _dontLink ? Point : LinkedPoint;
-            pivot = new ctor(pivot.x, pivot.y, this, 'setPivot');
-        }
-        return pivot;
+        return pivot
+                ? new LinkedPoint(pivot.x, pivot.y, this, 'setPivot')
+                : null;
     },
 
     setPivot: function(/* point */) {
@@ -778,9 +791,7 @@ new function() { // Injection scope for various item event handlers
         this._pivot = Point.read(arguments, 0, { clone: true, readNull: true });
         // No need for _changed() since the only thing this affects is _position
         this._position = undefined;
-    },
-
-    _pivot: null,
+    }
 }, Base.each({ // Produce getters for bounds properties:
         getStrokeBounds: { stroke: true },
         getHandleBounds: { handle: true },
@@ -839,7 +850,7 @@ new function() { // Injection scope for various item event handlers
             // Restore to the last revertible matrix stored in _backup, and get
             // the bounds again. That way, we can prevent collapsing to 0-size.
             if (!_matrix.isInvertible()) {
-                _matrix.initialize(_matrix._backup
+                _matrix.set(_matrix._backup
                         || new Matrix().translate(_matrix.getTranslation()));
                 bounds = this.getBounds();
             }
@@ -898,7 +909,7 @@ new function() { // Injection scope for various item event handlers
             ].join('');
         // NOTE: This needs to happen before returning cached values, since even
         // then, _boundsCache needs to be kept up-to-date.
-        Item._updateBoundsCache(this._parent || this._parentSymbol, cacheItem);
+        Item._updateBoundsCache(this._parent || this._symbol, cacheItem);
         if (cacheKey && this._bounds && cacheKey in this._bounds)
             return this._bounds[cacheKey].rect.clone();
         var bounds = this._getBounds(matrix || _matrix, options);
@@ -919,11 +930,15 @@ new function() { // Injection scope for various item event handlers
     /**
      * Returns to correct matrix to use to transform stroke related geometries
      * when calculating bounds: the item's matrix if {@link #strokeScaling} is
-     * `true`, otherwise the shiftless, inverted view matrix.
+     * `true`, otherwise the parent's inverted view matrix. The returned matrix
+     * is always shiftless, meaning its translation vector is reset to zero.
      */
     _getStrokeMatrix: function(matrix, options) {
-        return this.getStrokeScaling() ? matrix : (options && options.internal
-                ? this : this._parent).getViewMatrix().invert()._shiftless();
+        var parent = this.getStrokeScaling() ? null
+                : options && options.internal ? this
+                    : this._parent || this._symbol && this._symbol._item,
+            mx = parent ? parent.getViewMatrix().invert() : matrix;
+        return mx && mx._shiftless();
     },
 
     statics: /** @lends Item */{
@@ -1060,12 +1075,7 @@ new function() { // Injection scope for various item event handlers
     setRotation: function(rotation) {
         var current = this.getRotation();
         if (current != null && rotation != null) {
-            // Preserve the cached _decomposed values over rotation, and only
-            // update the rotation property on it.
-            var decomposed = this._decomposed;
             this.rotate(rotation - current);
-            decomposed.rotation = rotation;
-            this._decomposed = decomposed;
         }
     },
 
@@ -1076,23 +1086,20 @@ new function() { // Injection scope for various item event handlers
      * @bean
      * @type Point
      */
-    getScaling: function(_dontLink) {
+    getScaling: function() {
         var decomposed = this._decompose(),
-            scaling = decomposed && decomposed.scaling,
-            ctor = _dontLink ? Point : LinkedPoint;
-        return scaling && new ctor(scaling.x, scaling.y, this, 'setScaling');
+            scaling = decomposed && decomposed.scaling;
+        return scaling
+                ? new LinkedPoint(scaling.x, scaling.y, this, 'setScaling')
+                : undefined;
     },
 
     setScaling: function(/* scaling */) {
-        var current = this.getScaling();
-        if (current) {
+        var current = this.getScaling(),
             // Clone existing points since we're caching internally.
-            var scaling = Point.read(arguments, 0, { clone: true }),
-                // See #setRotation() for preservation of _decomposed.
-                decomposed = this._decomposed;
+            scaling = Point.read(arguments, 0, { clone: true, readNull: true });
+        if (current && scaling) {
             this.scale(scaling.x / current.x, scaling.y / current.y);
-            decomposed.scaling = scaling;
-            this._decomposed = decomposed;
         }
     },
 
@@ -1366,9 +1373,9 @@ new function() { // Injection scope for various item event handlers
         return this._children;
     },
 
-    setChildren: function(items, _preserve) {
+    setChildren: function(items) {
         this.removeChildren();
-        this.addChildren(items, _preserve);
+        this.addChildren(items);
     },
 
     /**
@@ -1557,7 +1564,7 @@ new function() { // Injection scope for various item event handlers
         }
         // Use Matrix#initialize to easily copy over values.
         if (!excludeMatrix)
-            this._matrix.initialize(source._matrix);
+            this._matrix.set(source._matrix);
         // We can't just set _applyMatrix as many item types won't allow it,
         // e.g. creating a Shape in Path#toShape().
         // Using the setter instead takes care of it.
@@ -1565,9 +1572,9 @@ new function() { // Injection scope for various item event handlers
         // in case #applyMatrix is true.
         this.setApplyMatrix(source._applyMatrix);
         this.setPivot(source._pivot);
-        // Copy over the selection state, use setSelected so the item
-        // is also added to Project#selectedItems if it is selected.
-        this.setSelected(source._selected);
+        // Copy over the selection state, use setSelection so the item
+        // is also added to Project#_selectionItems if it is selected.
+        this.setSelection(source._selection);
         // Copy over data and name as well.
         var data = source._data,
             name = source._name;
@@ -1857,7 +1864,9 @@ new function() { // Injection scope for hit-test functions shared with project
                     // If this is the first one in the recursion, factor in the
                     // zoom of the view and the globalMatrix of the item.
                     : this.getGlobalMatrix().prepend(this.getView()._matrix),
-            strokeMatrix = viewMatrix.inverted(),
+            strokeMatrix = this.getStrokeScaling()
+                    ? null
+                    : viewMatrix.inverted()._shiftless(),
             // Calculate the transformed padding as 2D size that describes the
             // transformed tolerance circle / ellipse. Make sure it's never 0
             // since we're using it for division.
@@ -1876,13 +1885,14 @@ new function() { // Injection scope for hit-test functions shared with project
         // See if we should check self (own content), by filtering for type,
         // guides and selected items if that's required.
         var checkSelf = !(options.guides && !this._guide
-                || options.selected && !this._selected
+                || options.selected && !this.isSelected()
                 // Support legacy Item#type property to match hyphenated
                 // class-names.
                 || options.type && options.type !== Base.hyphenate(this._class)
                 || options.class && !(this instanceof options.class)),
             callback = options.match,
             that = this,
+            bounds,
             res;
 
         function match(hit) {
@@ -1903,7 +1913,7 @@ new function() { // Injection scope for hit-test functions shared with project
         if (checkSelf && (options.center || options.bounds) && this._parent) {
             // Don't get the transformed bounds, check against transformed
             // points instead
-            var bounds = this.getInternalBounds();
+            bounds = this.getInternalBounds();
             if (options.center) {
                 res = checkBounds('center', 'Center');
             }
@@ -2277,8 +2287,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item to be added as a child
      * @return {Item} the added item, or `null` if adding was not possible
      */
-    addChild: function(item, _preserve) {
-        return this.insertChild(undefined, item, _preserve);
+    addChild: function(item) {
+        return this.insertChild(undefined, item);
     },
 
     /**
@@ -2290,8 +2300,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item to be inserted as a child
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertChild: function(index, item, _preserve) {
-        var res = item ? this.insertChildren(index, [item], _preserve) : null;
+    insertChild: function(index, item) {
+        var res = item ? this.insertChildren(index, [item]) : null;
         return res && res[0];
     },
 
@@ -2303,8 +2313,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item[]} items the items to be added as children
      * @return {Item[]} the added items, or `null` if adding was not possible
      */
-    addChildren: function(items, _preserve) {
-        return this.insertChildren(this._children.length, items, _preserve);
+    addChildren: function(items) {
+        return this.insertChildren(this._children.length, items);
     },
 
     /**
@@ -2317,48 +2327,39 @@ new function() { // Injection scope for hit-test functions shared with project
      * @return {Item[]} the inserted items, or `null` if inserted was not
      *     possible
      */
-    insertChildren: function(index, items, _preserve, _proto) {
-        // CompoundPath#insertChildren() requires _preserve and _type:
-        // _preserve avoids changing of the children's path orientation
-        // _proto enforces the prototype of the inserted items, as used by
-        // CompoundPath#insertChildren()
+    insertChildren: function(index, items) {
         var children = this._children;
         if (children && items && items.length > 0) {
-            // We need to clone items because it might be
-            // an Item#children array. Also, we're removing elements if they
-            // don't match _type. Use Array.prototype.slice because items can be
-            // an arguments object.
-            items = Array.prototype.slice.apply(items);
+            // We need to clone items because it may be an Item#children array.
+            // Also, we're removing elements if they don't match _type.
+            // Use Base.slice() because items can be an arguments object.
+            items = Base.slice(items);
             // Remove the items from their parents first, since they might be
             // inserted into their own parents, affecting indices.
-            // Use the loop also to filter out wrong _type.
+            // Use the loop also to filter invalid items.
             for (var i = items.length - 1; i >= 0; i--) {
                 var item = items[i];
-                if (_proto && !(item instanceof _proto)) {
+                if (!item) {
                     items.splice(i, 1);
                 } else {
-                    // If the item is removed and inserted it again further
-                    /// above, the index needs to be adjusted accordingly.
-                    var owner = item._getOwner(),
-                        shift = owner === this && item._index < index;
                     // Notify parent of change. Don't notify item itself yet,
                     // as we're doing so when adding it to the new owner below.
-                    if (owner && item._remove(false, true) && shift)
-                        index--;
+                    item._remove(false, true);
                 }
             }
             Base.splice(children, items, index, 0);
             var project = this._project,
                 // See #_remove() for an explanation of this:
-                notifySelf = project && project._changes;
+                notifySelf = project._changes;
             for (var i = 0, l = items.length; i < l; i++) {
-                var item = items[i];
+                var item = items[i],
+                    name = item._name;
                 item._parent = this;
-                item._setProject(this._project, true);
-                // Setting the name again makes sure all name lookup structures
+                item._setProject(project, true);
+                // Set the name again to make sure all name lookup structures
                 // are kept in sync.
-                if (item._name)
-                    item.setName(item._name);
+                if (name)
+                    item.setName(name);
                 if (notifySelf)
                     this._changed(/*#=*/Change.INSERTION);
             }
@@ -2374,15 +2375,39 @@ new function() { // Injection scope for hit-test functions shared with project
     _insertItem: '#insertChild',
 
     /**
+     * Private helper method used by {@link #insertAbove(item)} and
+     * {@link #insertBelow(item)}, to insert this item in relation to a
+     * specified other item.
+     *
+     * @param {Item} item the item in relation to which which it should be
+     *     inserted
+     * @param {Number} offset the offset at which the item should be inserted
+     * @return {Item} the inserted item, or `null` if inserting was not possible
+     */
+    _insertAt: function(item, offset) {
+        var res = this;
+        if (res !== item) {
+            var owner = item && item._getOwner();
+            if (owner) {
+                // Notify parent of change. Don't notify item itself yet,
+                // as we're doing so when adding it to the new owner below.
+                res._remove(false, true);
+                owner._insertItem(item._index + offset, res);
+            } else {
+                res = null;
+            }
+        }
+        return res;
+    },
+
+    /**
      * Inserts this item above the specified item.
      *
      * @param {Item} item the item above which it should be inserted
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertAbove: function(item, _preserve) {
-        var owner = item && item._getOwner();
-        return owner ? owner._insertItem(item._index + 1, this, _preserve)
-                : null;
+    insertAbove: function(item) {
+        return this._insertAt(item, 1);
     },
 
     /**
@@ -2391,9 +2416,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item below which it should be inserted
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertBelow: function(item, _preserve) {
-        var owner = item && item._getOwner();
-        return owner ? owner._insertItem(item._index, this, _preserve) : null;
+    insertBelow: function(item) {
+        return this._insertAt(item, 0);
     },
 
     /**
@@ -3919,9 +3943,9 @@ new function() { // Injection scope for hit-test functions shared with project
      *
      * @name Item#on
      * @function
-     * @param {Object} object an object literal containing one or more of the
-     *     following properties: {@values frame, mousedown, mouseup, mousedrag,
-     *     click, doubleclick, mousemove, mouseenter, mouseleave}
+     * @param {Object} object an object containing one or more of the following
+     *     properties: {@values frame, mousedown, mouseup, mousedrag, click,
+     *     doubleclick, mousemove, mouseenter, mouseleave}
      * @return {Item} this item itself, so calls can be chained
      *
      * @example {@paperscript}
@@ -3988,9 +4012,9 @@ new function() { // Injection scope for hit-test functions shared with project
      *
      * @name Item#off
      * @function
-     * @param {Object} object an object literal containing one or more of the
-     *     following properties: {@values frame, mousedown, mouseup, mousedrag,
-     *     click, doubleclick, mousemove, mouseenter, mouseleave}
+     * @param {Object} object an object containing one or more of the following
+     *     properties: {@values frame, mousedown, mouseup, mousedrag, click,
+     *     doubleclick, mousemove, mouseenter, mouseleave}
      * @return {Item} this item itself, so calls can be chained
      */
 
@@ -4068,7 +4092,7 @@ new function() { // Injection scope for hit-test functions shared with project
                 // Transform the blur value as a vector and use its new length:
                 blur = mx.transform(new Point(style.getShadowBlur(), 0)),
                 offset = mx.transform(this.getShadowOffset());
-            ctx.shadowColor =  style.getShadowColor().toCanvasStyle(ctx);
+            ctx.shadowColor = style.getShadowColor().toCanvasStyle(ctx);
             ctx.shadowBlur = blur.getLength();
             ctx.shadowOffsetX = offset.x;
             ctx.shadowOffsetY = offset.y;
@@ -4239,33 +4263,60 @@ new function() { // Injection scope for hit-test functions shared with project
         return updated;
     },
 
-    _drawSelection: function(ctx, matrix, size, selectedItems, updateVersion) {
-        if ((this._drawSelected || this._boundsSelected)
+    _drawSelection: function(ctx, matrix, size, selectionItems, updateVersion) {
+        var selection = this._selection,
+            itemSelected = selection & /*#=*/ItemSelection.ITEM,
+            boundsSelected = selection & /*#=*/ItemSelection.BOUNDS
+                    || itemSelected && this._selectBounds,
+            positionSelected = selection & /*#=*/ItemSelection.POSITION;
+        if (!this._drawSelected)
+            itemSelected = false;
+        if ((itemSelected || boundsSelected || positionSelected)
                 && this._isUpdated(updateVersion)) {
             // Allow definition of selected color on a per item and per
             // layer level, with a fallback to #009dec
             var layer,
-                color = this.getSelectedColor(true)
-                    || (layer = this.getLayer()) && layer.getSelectedColor(true),
-                mx = matrix.appended(this.getGlobalMatrix(true));
+                color = this.getSelectedColor(true) || (layer = this.getLayer())
+                    && layer.getSelectedColor(true),
+                mx = matrix.appended(this.getGlobalMatrix(true)),
+                half = size / 2;
             ctx.strokeStyle = ctx.fillStyle = color
                     ? color.toCanvasStyle(ctx) : '#009dec';
-            if (this._drawSelected)
-                this._drawSelected(ctx, mx, selectedItems);
-            if (this._boundsSelected) {
-                var half = size / 2,
-                    coords = mx._transformCorners(
-                            this.getInternalBounds());
+            if (itemSelected)
+                this._drawSelected(ctx, mx, selectionItems);
+            if (positionSelected) {
+                var point = this.getPosition(true),
+                    x = point.x,
+                    y = point.y;
+                ctx.beginPath();
+                ctx.arc(x, y, half, 0, Math.PI * 2, true);
+                ctx.stroke();
+                var deltas = [[0, -1], [1, 0], [0, 1], [-1, 0]],
+                    start = half,
+                    end = size + 1;
+                for (var i = 0; i < 4; i++) {
+                    var delta = deltas[i],
+                        dx = delta[0],
+                        dy = delta[1];
+                    ctx.moveTo(x + dx * start, y + dy * start);
+                    ctx.lineTo(x + dx * end, y + dy * end);
+                    ctx.stroke();
+                }
+            }
+            if (boundsSelected) {
+                var coords = mx._transformCorners(this.getInternalBounds());
                 // Now draw a rectangle that connects the transformed
                 // bounds corners, and draw the corners.
                 ctx.beginPath();
-                for (var i = 0; i < 8; i++)
+                for (var i = 0; i < 8; i++) {
                     ctx[i === 0 ? 'moveTo' : 'lineTo'](coords[i], coords[++i]);
+                }
                 ctx.closePath();
                 ctx.stroke();
-                for (var i = 0; i < 8; i++)
+                for (var i = 0; i < 8; i++) {
                     ctx.fillRect(coords[i] - half, coords[++i] - half,
                             size, size);
+                }
             }
         }
     },
