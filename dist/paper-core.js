@@ -1,5 +1,5 @@
 /*!
- * Paper.js v0.10.2-production - The Swiss Army Knife of Vector Graphics Scripting.
+ * Paper.js v0.10.2-prebuilt/prod - The Swiss Army Knife of Vector Graphics Scripting.
  * http://paperjs.org/
  *
  * Copyright (c) 2011 - 2016, Juerg Lehni & Jonathan Puckey
@@ -9,7 +9,7 @@
  *
  * All rights reserved.
  *
- * Date: Thu Jul 21 15:47:38 2016 -0400
+ * Date: Thu Jul 21 16:03:15 2016 -0400
  *
  ***
  *
@@ -756,7 +756,7 @@ var PaperScope = Base.extend({
 		}
 	},
 
-	version: "0.10.2-production",
+	version: "0.10.2-prebuilt/prod",
 
 	getView: function() {
 		var project = this.project;
