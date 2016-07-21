@@ -1055,11 +1055,10 @@ var Path = PathItem.extend(/** @lends Path# */{
                 // will happen below.
                 path = this;
             } else {
+                path = new paper[this._class];
                 // Pass true for _preserve, in case of CompoundPath, to avoid
                 // reversing of path direction, which would mess with segments!
 
-                // Use _clone to copy over all other attributes, including style
-                path = new paper[this._class];
                 path.insertAbove(this, true);
 
                 path.copyAttributes(this);
