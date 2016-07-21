@@ -51,9 +51,22 @@ var MouseEvent = Event.extend(/** @lends MouseEvent# */{
      * @type Point
      */
 
-    // DOCS: document MouseEvent#target
     /**
+     * The item that dispatched the event. It is different from
+     * {@link #currentTarget} when the event handler is called during
+     * the bubbling phase of the event.
+     *
      * @name MouseEvent#target
+     * @type Item
+     */
+
+    /**
+     * The current target for the event, as the event traverses the scene graph.
+     * It always refers to the element the event handler has been attached to as
+     * opposed to {@link #target} which identifies the element on
+     * which the event occurred.
+     *
+     * @name MouseEvent#currentTarget
      * @type Item
      */
 

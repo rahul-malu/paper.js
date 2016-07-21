@@ -14,7 +14,7 @@
  * @name PaperScript
  * @namespace
  */
-Base.exports.PaperScript = (function() {
+Base.exports.PaperScript = function() {
     // Locally turn of exports and define for inlined acorn.
     // Just declaring the local vars is enough, as they will be undefined.
     var exports, define,
@@ -31,9 +31,8 @@ Base.exports.PaperScript = (function() {
         '*': '__multiply',
         '/': '__divide',
         '%': '__modulo',
-        // Use the real equals.
-        '==': 'equals',
-        '!=': 'equals'
+        '==': '__equals',
+        '!=': '__equals'
     };
 
     var unaryOperators = {
@@ -43,7 +42,7 @@ Base.exports.PaperScript = (function() {
 
     // Inject underscored math methods as aliases to Point, Size and Color.
     var fields = Base.each(
-        ['add', 'subtract', 'multiply', 'divide', 'modulo', 'negate'],
+        ['add', 'subtract', 'multiply', 'divide', 'modulo', 'equals', 'negate'],
         function(name) {
             // Create an alias for each math method to be injected into the
             // classes using Straps.js' #inject()
@@ -319,7 +318,7 @@ Base.exports.PaperScript = (function() {
                     agent.firefox && version >= 40 ||
                     agent.node);
             var mappings = ['AA' + encodeVLQ(offsetCode ? 0 : offset) + 'A'];
-                // Create empty entries by the amount of lines + 1, so join can be
+            // Create empty entries by the amount of lines + 1, so join can be
             // used below to produce the actual instructions that many times.
             mappings.length = (code.match(lineBreaks) || []).length + 1
                     + (offsetCode ? offset : 0);
@@ -348,7 +347,7 @@ Base.exports.PaperScript = (function() {
             }
             if (/^(inline|both)$/.test(sourceMaps)) {
                 code += "\n//# sourceMappingURL=data:application/json;base64,"
-                        + window.btoa(unescape(encodeURIComponent(
+                        + self.btoa(unescape(encodeURIComponent(
                             JSON.stringify(map))));
             }
             code += "\n//# sourceURL=" + (url || 'paperscript');
@@ -591,4 +590,4 @@ Base.exports.PaperScript = (function() {
     };
 // Pass on `this` as the binding object, so we can reference Acorn both in
 // development and in the built library.
-}).call(this);
+}.call(this);

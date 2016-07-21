@@ -57,57 +57,70 @@ test('curve.getTimeAt() with straight curve', function() {
     equals(t, 0.3869631475722452);
 });
 
-test('path.join(path)', function() {
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+test('path1.join(path2)', function() {
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(10, 0);
     path2.add(20, 10);
 
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
-    equals(function() {
-        return paper.project.activeLayer.children.length;
-    }, 1);
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
+    equals(function() { return paper.project.activeLayer.children.length; }, 1);
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(20, 10);
     path2.add(10, 0);
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } }');
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
 
     var path2 = new Path();
     path2.add(30, 10);
     path2.add(40, 0);
-    path.join(path2);
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 30, y: 10 } },{ point: { x: 40, y: 0 } }');
+    path1.join(path2);
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 30, y: 10 } },{ point: { x: 40, y: 0 } }');
 
-    var path = new Path();
-    path.add(0, 0);
-    path.add(10, 0);
-    path.add(20, 10);
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
+    path1.add(20, 10);
 
     var path2 = new Path();
     path2.add(0, 0);
     path2.add(10, 5);
     path2.add(20, 10);
 
-    path.join(path2);
+    path1.join(path2);
 
-    equals(path.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } },{ point: { x: 10, y: 5 } }');
+    equals(path1.segments.toString(), '{ point: { x: 0, y: 0 } },{ point: { x: 10, y: 0 } },{ point: { x: 20, y: 10 } },{ point: { x: 10, y: 5 } }');
+    equals(function() { return path1.closed; }, true);
+});
+
+test('path1.join(path2, tolerance)', function() {
+    var path1 = new Path();
+    path1.add(0, 0);
+    path1.add(10, 0);
+
+    var path2 = new Path();
+    path2.add(path1.lastSegment.point.add(1e-14));
+    path2.add(20, 10);
+
     equals(function() {
-        return path.closed;
-    }, true);
+        return path1.clone().join(path2.clone(), 0).segments.length;
+    }, 4);
+    equals(function() {
+        return path1.clone().join(path2.clone(), 1e-12).segments.length;
+    }, 3);
 });
 
 test('path.remove()', function() {
@@ -150,6 +163,53 @@ test('path.removeSegments()', function() {
     equals(function() {
         return path.segments.length;
     }, 0);
+});
+
+test('path.getNearestPoint()', function() {
+    var path = new Path();
+    path.add(0, 0);
+    path.add(10, 0);
+    path.add(10, 10);
+    path.add(0, 10);
+    path.closePath();
+
+    var point = path.getNearestPoint(new Point(1, 5));
+    equals(function() {
+        return [point.x, point.y];
+    }, [0, 5]);
+
+    var point = path.getNearestPoint(new Point(11, 11));
+    equals(function() {
+        return [point.x, point.y];
+    }, [10, 10]);
+
+    var path = new Path();
+    path.add(0, 0);
+    path.add(100, 0);
+    path.add(100, 100);
+    path.add(0, 100);
+    path.closePath();
+
+    var point = path.getNearestPoint(new Point(1, 5));
+    equals(function() {
+        return [point.x, point.y];
+    }, [0, 5]);
+
+    var point = path.getNearestPoint(new Point(5, 20));
+    equals(function() {
+        return [point.x, point.y];
+    }, [0, 20]);
+
+    var point = path.getNearestPoint(new Point(101, 101));
+    equals(function() {
+        return [point.x, point.y];
+    }, [100, 100]);
+
+    var line = new Path.Line([10, 10], [100, 100])
+    var point = line.getNearestPoint(new Point(70, 60));
+    equals(function() {
+        return [point.x, point.y];
+    }, [65, 65]);
 });
 
 test('Is the path deselected after setting a new list of segments?', function() {
@@ -314,6 +374,14 @@ test('Simplifying a path with three segments of the same position should not thr
     }, 1);
 });
 
+test('Simplifying a path with three segments of the same position should not throw an error', function() {
+    var path = new Path([20, 20], [20, 20], [20, 20]);
+    path.simplify();
+    equals(function() {
+        return path.segments.length;
+    }, 1);
+});
+
 test('Path#interpolate', function() {
     var path = new Path(),
         path0 = new Path.Circle({
@@ -339,7 +407,8 @@ test('Path#interpolate', function() {
     equals(path, halfway);
 });
 
-QUnit.module('Path Curves');
+////////////////////////////////////////////////////////////////////////////////
+// Path Curves
 
 test('path.curves synchronisation', function() {
     var path = new Path();
@@ -515,7 +584,8 @@ test('Splitting a path with one curve in the middle result in two paths of the s
     }, true);
 });
 
-QUnit.module('Path Drawing Commands');
+////////////////////////////////////////////////////////////////////////////////
+// Path Drawing Commands
 
 test('path.lineTo(point);', function() {
     var path = new Path();
