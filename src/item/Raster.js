@@ -181,6 +181,16 @@ var Raster = Item.extend(/** @lends Raster# */{
         this.setSize(this.getWidth(), height);
     },
 
+    /**
+     * The loading state of the raster image.
+     *
+     * @bean
+     * @type Boolean
+     */
+    getLoaded: function() {
+        return this._loaded;
+    },
+
     isEmpty: function() {
         var size = this._size;
         return !size || size.width === 0 && size.height === 0;
@@ -369,7 +379,7 @@ var Raster = Item.extend(/** @lends Raster# */{
     },
 
     setSource: function(src) {
-        var image = new window.Image(),
+        var image = new self.Image(),
             crossOrigin = this._crossOrigin;
         if (crossOrigin)
             image.crossOrigin = crossOrigin;
@@ -501,12 +511,16 @@ var Raster = Item.extend(/** @lends Raster# */{
             // TODO: How about rounding of bounds.size?
             path = object;
             bounds = object.getBounds();
-        } else if (object.width) {
-            bounds = new Rectangle(object);
-        } else if (object.x) {
-            // Create a rectangle of 1px size around the specified coordinates
-            bounds = new Rectangle(object.x - 0.5, object.y - 0.5, 1, 1);
+        } else if (typeof object === 'object') {
+            if ('width' in object) {
+                bounds = new Rectangle(object);
+            } else if ('x' in object) {
+                // Create a rectangle of 1px size around the specified point.
+                bounds = new Rectangle(object.x - 0.5, object.y - 0.5, 1, 1);
+            }
         }
+        if (!bounds)
+            return null;
         // Use a sample size of max 32 x 32 pixels, into which the path is
         // scaled as a clipping path, and then the actual image is drawn in and
         // sampled.

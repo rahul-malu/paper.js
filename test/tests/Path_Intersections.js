@@ -20,8 +20,10 @@ function testIntersection(intersections, results) {
         var name = 'intersections[' + i + ']';
         equals(inter.point, new Point(values.point), name + '.point');
         equals(inter.index, values.index, name + '.index');
-        equals(inter.time, values.time || 0, name + '.time');
-        equals(inter.isCrossing(), values.crossing || false, name + '.isCrossing()');
+        if (values.time != null)
+            equals(inter.time, values.time, name + '.time');
+        if (values.crossing != null)
+            equals(inter.isCrossing(), values.crossing, name + '.isCrossing()');
     }
 }
 
@@ -87,8 +89,8 @@ test('#571', function() {
 });
 
 test('overlapping circles', function() {
-    var path1 = new Path.Circle(new paper.Point(50, 50), 50);
-    var path2 = new Path.Circle(new paper.Point(100, 100), 50);
+    var path1 = new Path.Circle(new Point(50, 50), 50);
+    var path2 = new Path.Circle(new Point(100, 100), 50);
     testIntersection(path1.getIntersections(path2), [
         { point: { x: 100, y: 50 }, index: 2, crossing: true },
         { point: { x: 50, y: 100 }, index: 3, crossing: true }
@@ -101,5 +103,72 @@ test('circle and square (existing segments overlaps on curves)', function() {
     testIntersection(path1.getIntersections(path2), [
         { point: { x: 190, y: 110 }, index: 2, time: 0, crossing: true },
         { point: { x: 110, y: 190 }, index: 3, time: 0, crossing: true }
+    ]);
+});
+
+test('#904', function() {
+    var path1 = new Path({
+        segments: [
+            [347.65684372173973, 270.4315945523045, 0, 0, 22.844385382059784, -25.115215946843847],
+            [383.0588370772214, 178.9392357483178, -0.025514950166041217, 33.94338870431889, 0, 0],
+        ]
+    });
+    var path2 = new Path({
+        segments: [
+            [347.65684372173973, 270.4315945523045, 0, 0, 22.869900332225882, -25.136478405315614],
+            [383.0588370772214, 178.84568093104204, 0, 33.97740863787374, 0, -33.93913621262462],
+        ]
+    });
+
+    testIntersection(path1.getIntersections(path2), [
+        { point: { x: 347.65684, y: 270.43159 }, index: 0, time: 0, crossing: false },
+        { point: { x: 383.05787, y: 179.36393 }, index: 0, time: 0.99583, crossing: true }
+    ]);
+});
+
+test('#1066', function() {
+    var path1 = new Path({
+        segments: [
+            [230.4447915660904, 300],
+            [230.4447915660904, 180]
+        ]
+    });
+    var path2 = new Path({
+        segments: [
+            [221.5842044289023, 189.47264666691018, 0, 0, 9.363067822501023, 28.089207003036847],
+            [249.67341143193917, 273.74026767602066, -9.363067822501023, -28.08920700303679, 0, 0]
+        ]
+    });
+    testIntersection(path1.getIntersections(path2), [
+        { point: { x: 230.44479, y: 216.05441 }, index: 0, time: 0.63642, crossing: true }
+    ]);
+});
+
+test('#1074', function() {
+    var path1 = new Path('M349.98644,0c-192.98072,0 -349.98644,157.00255 -349.98644,349.98327c0,35.02687 28.39313,63.42 63.42,63.42c35.02687,0 63.42,-28.39313 63.42,-63.42c0,-123.04114 100.10213,-223.14327 223.14644,-223.14327c35.02687,0 63.42,-28.39313 63.42,-63.42c0,-35.02687 -28.39313,-63.42 -63.42,-63.42z');
+    var path2 = new Path('M349.98644,0c-35.02687,0 -63.42,28.39313 -63.42,63.42c0,35.02687 28.39313,63.42 63.42,63.42c59.25965,0 118.69687,22.57118 158.98443,60.37584c25.54558,23.97593 65.67775,22.6885 89.64417,-2.84756c23.96959,-25.5424 22.69168,-65.67775 -2.84756,-89.64417c-63.21071,-59.31355 -155.09044,-94.72411 -245.78104,-94.72411z');
+    testIntersection(path1.getIntersections(path2), [
+        { point: { x: 349.98644, y: 0 }, index: 0, time: 0, crossing: true },
+        { point: { x: 349.98644, y: 126.84 } , index: 4, time: 0, crossing: true }
+    ]);
+});
+
+test('#1088', function() {
+    var path1 = new Path({
+        segments: [
+            [314.48576574722523, 308.77472829145444, 8.651222275575492, -2.220498935022104, -8.651222275575492, 2.220498935022105],
+            [290.40724577164383, 302.0497467665447, 6.2486166726329975, 6.3819316872198515, -0.012648799703259704, -0.012918663419550348]
+        ],
+        closed: false
+    });
+    var path2 = new Path({
+        segments: [
+            [328.02746577749963, 300.1256389868014, 7.902769748335459, -10.046794724901815, -2.5352164811920375e-11, 3.2230218494078144e-11],
+            [309.7443037372522, 309.63202128991924, 5.4001247917767614e-11, -2.9558577807620168e-12, -6.666656713343759, 0.3629571641783996]
+        ],
+        closed: false
+    });
+    testIntersection(path1.getIntersections(path2), [
+        { point: { x: 309.99726, y: 309.5004975367957 }, index: 0, time: 0.17182, crossing: true }
     ]);
 });

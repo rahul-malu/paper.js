@@ -57,8 +57,8 @@ var Segment = Base.extend(/** @lends Segment# */{
      * Creates a new Segment object.
      *
      * @name Segment#initialize
-     * @param {Object} object an object literal containing properties to
-     * be set on the segment
+     * @param {Object} object an object containing properties to be set on the
+     *     segment
      *
      * @example {@paperscript}
      * // Creating segments using object notation:
@@ -115,32 +115,31 @@ var Segment = Base.extend(/** @lends Segment# */{
      */
     initialize: function Segment(arg0, arg1, arg2, arg3, arg4, arg5) {
         var count = arguments.length,
-            point, handleIn, handleOut,
-            selection;
-        // TODO: Use Point.read or Point.readNamed to read these?
-        if (count === 0) {
-            // Nothing
-        } else if (count === 1) {
-            // NOTE: This copies from existing segments through accessors.
-            if (arg0 && 'point' in arg0) {
-                point = arg0.point;
-                handleIn = arg0.handleIn;
-                handleOut = arg0.handleOut;
-                selection = arg0.selection;
+            point, handleIn, handleOut, selection;
+        // TODO: Should we use Point.read() or Point.readNamed() to read these?
+        if (count > 0) {
+            if (arg0 == null || typeof arg0 === 'object') {
+                // Handle undefined, null and passed objects:
+                if (count === 1 && arg0 && 'point' in arg0) {
+                    // NOTE: This copies from segments through accessors.
+                    point = arg0.point;
+                    handleIn = arg0.handleIn;
+                    handleOut = arg0.handleOut;
+                    selection = arg0.selection;
+                } else {
+                    // It doesn't matter if all of these arguments exist.
+                    // SegmentPoint() creates points with (0, 0) otherwise.
+                    point = arg0;
+                    handleIn = arg1;
+                    handleOut = arg2;
+                    selection = arg3;
+                }
             } else {
-                point = arg0;
+                // Read points from the arguments list as a row of numbers.
+                point = [ arg0, arg1 ];
+                handleIn = arg2 !== undefined ? [ arg2, arg3 ] : null;
+                handleOut = arg4 !== undefined ? [ arg4, arg5 ] : null;
             }
-        } else if (typeof arg0 === 'object') {
-            // It doesn't matter if all of these arguments exist.
-            // new SegmentPoint() produces creates points with (0, 0) otherwise.
-            point = arg0;
-            handleIn = arg1;
-            handleOut = arg2;
-            selection = arg3;
-        } else { // Read points from the arguments list as a row of numbers
-            point = arg0 !== undefined ? [ arg0, arg1 ] : null;
-            handleIn = arg2 !== undefined ? [ arg2, arg3 ] : null;
-            handleOut = arg4 !== undefined ? [ arg4, arg5 ] : null;
         }
         new SegmentPoint(point, this, '_point');
         new SegmentPoint(handleIn, this, '_handleIn');
@@ -149,7 +148,7 @@ var Segment = Base.extend(/** @lends Segment# */{
             this.setSelection(selection);
     },
 
-    _serialize: function(options) {
+    _serialize: function(options, dictionary) {
         // If it is has no handles, only serialize point, otherwise handles too.
         var point = this._point,
             selection = this._selection,
@@ -158,7 +157,7 @@ var Segment = Base.extend(/** @lends Segment# */{
                     : point;
         if (selection)
             obj.push(selection);
-        return Base.serialize(obj, options, true);
+        return Base.serialize(obj, options, true, dictionary);
     },
 
     _changed: function(point) {
@@ -198,10 +197,7 @@ var Segment = Base.extend(/** @lends Segment# */{
     },
 
     setPoint: function(/* point */) {
-        var point = Point.read(arguments);
-        // Do not replace the internal object but update it instead, so
-        // references to it are kept alive.
-        this._point.set(point.x, point.y);
+        this._point.set(Point.read(arguments));
     },
 
     /**
@@ -216,9 +212,7 @@ var Segment = Base.extend(/** @lends Segment# */{
     },
 
     setHandleIn: function(/* point */) {
-        var point = Point.read(arguments);
-        // See #setPoint:
-        this._handleIn.set(point.x, point.y);
+        this._handleIn.set(Point.read(arguments));
     },
 
     /**
@@ -233,9 +227,7 @@ var Segment = Base.extend(/** @lends Segment# */{
     },
 
     setHandleOut: function(/* point */) {
-        var point = Point.read(arguments);
-        // See #setPoint:
-        this._handleOut.set(point.x, point.y);
+        this._handleOut.set(Point.read(arguments));
     },
 
     /**
@@ -256,8 +248,8 @@ var Segment = Base.extend(/** @lends Segment# */{
      * turning the segment into a corner.
      */
     clearHandles: function() {
-        this._handleIn.set(0, 0);
-        this._handleOut.set(0, 0);
+        this._handleIn._set(0, 0);
+        this._handleOut._set(0, 0);
     },
 
     getSelection: function() {
@@ -527,10 +519,9 @@ var Segment = Base.extend(/** @lends Segment# */{
     reverse: function() {
         var handleIn = this._handleIn,
             handleOut = this._handleOut,
-            inX = handleIn._x,
-            inY = handleIn._y;
-        handleIn.set(handleOut._x, handleOut._y);
-        handleOut.set(inX, inY);
+            tmp = handleIn.clone();
+        handleIn.set(handleOut);
+        handleOut.set(tmp);
     },
 
     /**
@@ -603,13 +594,13 @@ var Segment = Base.extend(/** @lends Segment# */{
             handleIn2 = to._handleIn,
             handleOut2 = to._handleOut,
             handleOut1 = from._handleOut;
-        this._point.set(
+        this._point._set(
                 u * point1._x + v * point2._x,
                 u * point1._y + v * point2._y, true);
-        this._handleIn.set(
+        this._handleIn._set(
                 u * handleIn1._x + v * handleIn2._x,
                 u * handleIn1._y + v * handleIn2._y, true);
-        this._handleOut.set(
+        this._handleOut._set(
                 u * handleOut1._x + v * handleOut2._x,
                 u * handleOut1._y + v * handleOut2._y, true);
         this._changed();
@@ -655,7 +646,7 @@ var Segment = Base.extend(/** @lends Segment# */{
                 // If change is true, we need to set the new values back
                 point._x = x;
                 point._y = y;
-                i  = 2;
+                i = 2;
                 if (handleIn) {
                     handleIn._x = coords[i++] - x;
                     handleIn._y = coords[i++] - y;

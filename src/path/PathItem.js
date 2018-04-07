@@ -34,15 +34,54 @@ var PathItem = Item.extend(/** @lends PathItem# */{
          * data describes a plain path or a compound-path with multiple
          * sub-paths.
          *
+         * @name PathItem.create
          * @param {String} pathData the SVG path-data to parse
          * @return {Path|CompoundPath} the newly created path item
          */
-        create: function(pathData) {
-            // If there are multiple moveTo commands or a closePath command
-            // followed by other commands, we have a CompoundPath.
-            var ctor = (pathData && pathData.match(/m/gi) || []).length > 1
-                    || /z\s*\S+/i.test(pathData) ? CompoundPath : Path;
-            return new ctor(pathData);
+
+        /**
+         * Creates a path item from the given segments array, determining if the
+         * array describes a plain path or a compound-path with multiple
+         * sub-paths.
+         *
+         * @name PathItem.create
+         * @param {Number[][]} segments the segments array to parse
+         * @return {Path|CompoundPath} the newly created path item
+         */
+
+        /**
+         * Creates a path item from the given object, determining if the
+         * contained information describes a plain path or a compound-path with
+         * multiple sub-paths.
+         *
+         * @name PathItem.create
+         * @param {Object} object an object containing the properties describing
+         *     the item to be created
+         * @return {Path|CompoundPath} the newly created path item
+         */
+        create: function(arg) {
+            var data,
+                segments,
+                compound;
+            if (Base.isPlainObject(arg)) {
+                segments = arg.segments;
+                data = arg.pathData;
+            } else if (Array.isArray(arg)) {
+                segments = arg;
+            } else if (typeof arg === 'string') {
+                data = arg;
+            }
+            if (segments) {
+                var first = segments[0];
+                compound = first && Array.isArray(first[0]);
+            } else if (data) {
+                // If there are multiple moveTo commands or a closePath command
+                // followed by other commands, we have a CompoundPath.
+                compound = (data.match(/m/gi) || []).length > 1
+                        || /z\s*\S+/i.test(data);
+            }
+            var ctor = compound ? CompoundPath : Path;
+            return new ctor(arg);
         }
     },
 
@@ -52,13 +91,35 @@ var PathItem = Item.extend(/** @lends PathItem# */{
     },
 
     /**
+     * Specifies whether the path as a whole is oriented clock-wise, by looking
+     * at the path's area.
+     * Note that self-intersecting paths and sub-paths of different orientation
+     * can result in areas that cancel each other out.
+     *
+     * @bean
+     * @type Boolean
+     * @see Path#getArea()
+     * @see CompoundPath#getArea()
+     */
+    isClockwise: function() {
+        return this.getArea() >= 0;
+    },
+
+    setClockwise: function(clockwise) {
+        // Only revers the path if its clockwise orientation is not the same
+        // as what it is now demanded to be.
+        // On-the-fly conversion to boolean:
+        if (this.isClockwise() != (clockwise = !!clockwise))
+            this.reverse();
+    },
+
+    /**
      * The path's geometry, formatted as SVG style path data.
      *
      * @name PathItem#getPathData
      * @bean
      * @type String
      */
-
     setPathData: function(data) {
         // NOTE: #getPathData() is defined in CompoundPath / Path
         // This is a very compact SVG Path Data parser that works both for Path
@@ -99,8 +160,10 @@ var PathItem = Item.extend(/** @lends PathItem# */{
             coords = part.match(/[+-]?(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?/g);
             var length = coords && coords.length;
             relative = command === lower;
+            // Fix issues with z in the middle of SVG path data, not followed by
+            // a m command, see #413:
             if (previous === 'z' && !/[mz]/.test(lower))
-                this.moveTo(current = start);
+                this.moveTo(current);
             switch (lower) {
             case 'm':
             case 'l':
@@ -115,6 +178,7 @@ var PathItem = Item.extend(/** @lends PathItem# */{
             case 'h':
             case 'v':
                 var coord = lower === 'h' ? 'x' : 'y';
+                current = current.clone(); // Clone as we're going to modify it.
                 for (var j = 0; j < length; j++) {
                     current[coord] = getCoord(j, coord);
                     this.lineTo(current);
@@ -167,7 +231,11 @@ var PathItem = Item.extend(/** @lends PathItem# */{
                 }
                 break;
             case 'z':
-                this.closePath(true);
+                // Merge first and last segment with Numerical.EPSILON tolerance
+                // to address imprecisions in relative SVG data.
+                this.closePath(/*#=*/Numerical.EPSILON);
+                // Correctly handle relative m commands, see #1101:
+                current = start;
                 break;
             }
             previous = lower;
@@ -182,7 +250,7 @@ var PathItem = Item.extend(/** @lends PathItem# */{
 
     _contains: function(point) {
         // NOTE: point is reverse transformed by _matrix, so we don't need to
-        // apply here.
+        // apply the matrix here.
 /*#*/ if (__options.nativeContains || !__options.booleanOperations) {
         // To compare with native canvas approach:
         var ctx = CanvasProvider.getContext(1, 1);
@@ -415,8 +483,8 @@ var PathItem = Item.extend(/** @lends PathItem# */{
      * @name PathItem#flatten
      * @function
      *
-     * @param {Number} flatness the maximum error between the flattened lines
-     *     and the original curves
+     * @param {Number} [flatness=0.25] the maximum error between the flattened
+     *     lines and the original curves
      *
      * @example {@paperscript}
      * // Flattening a circle shaped path:
@@ -424,19 +492,19 @@ var PathItem = Item.extend(/** @lends PathItem# */{
      * // Create a circle shaped path at { x: 80, y: 50 }
      * // with a radius of 35:
      * var path = new Path.Circle({
-     *     center: new Size(80, 50),
+     *     center: [80, 50],
      *     radius: 35
      * });
      *
      * // Select the path, so we can inspect its segments:
      * path.selected = true;
      *
-     * // Create a copy of the path and move it 150 points to the right:
+     * // Create a copy of the path and move it by 150 points:
      * var copy = path.clone();
      * copy.position.x += 150;
      *
-     * // Convert its curves to points, with a maximum error of 10:
-     * copy.flatten(10);
+     * // Flatten the copied path, with a maximum error of 4 points:
+     * copy.flatten(4);
      */
 
     // TODO: Write about negative indices, and add an example for ranges.
@@ -893,13 +961,13 @@ var PathItem = Item.extend(/** @lends PathItem# */{
 
     /**
      * Closes the path. When closed, Paper.js connects the first and last
-     * segment of the path with an additional curve.
+     * segment of the path with an additional curve. The difference to setting
+     * {@link Path#closed} to `true` is that this will also merge the first
+     * segment with the last if they lie in the same location.
      *
      * @name PathItem#closePath
      * @function
      *
-     * @param {Boolean} join controls whether the method should attempt to merge
-     *     the first segment with the last if they lie in the same location
      * @see Path#closed
      */
 

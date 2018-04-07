@@ -60,8 +60,8 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
      * at the top of the active layer.
      *
      * @name CompoundPath#initialize
-     * @param {Object} object an object literal containing properties to
-     * be set on the path
+     * @param {Object} object an object containing properties to be set on the
+     *     path
      * @return {CompoundPath} the newly created path
      *
      * @example {@paperscript}
@@ -108,32 +108,31 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
         }
     },
 
-    insertChildren: function insertChildren(index, items, _preserve) {
-        // Convert CompoundPath items in the children list by adding their
-        // children to the list, replacing their parent.
+    insertChildren: function insertChildren(index, items) {
+        // If we're passed a segment array describing a simple path instead of a
+        // compound-path, wrap it in another array to turn it into the array
+        // notation for compound-paths.
+        var list = items,
+            first = list[0];
+        if (first && typeof first[0] === 'number')
+            list = [list];
+        // Perform some conversions depending on the type of item passed:
+        // Convert array-notation to paths, and expand compound-paths in the
+        // items list by adding their children to the it replacing their parent.
         for (var i = items.length - 1; i >= 0; i--) {
-            var item = items[i];
-            if (item instanceof CompoundPath) {
-                // Clone the items array before modifying it, as it may be a
-                // passed children array from another item.
-                items = items.slice();
-                items.splice.apply(items, [i, 1].concat(item.removeChildren()));
+            var item = list[i];
+            // Clone the list array before modifying it, as it may be a passed
+            // children array from another item.
+            if (list === items && !(item instanceof Path))
+                list = Base.slice(list);
+            if (Array.isArray(item)) {
+                list[i] = new Path({ segments: item, insert: false });
+            } else if (item instanceof CompoundPath) {
+                list.splice.apply(list, [i, 1].concat(item.removeChildren()));
                 item.remove();
             }
         }
-        // Pass on 'path' for _type, to make sure that only paths are added as
-        // children.
-        items = insertChildren.base.call(this, index, items, _preserve, Path);
-        // All children except for the bottom one (first one in list) are set
-        // to anti-clockwise orientation, so that they appear as holes, but
-        // only if their orientation was not already specified before
-        // (= _clockwise is defined).
-        for (var i = 0, l = !_preserve && items && items.length; i < l; i++) {
-            var item = items[i];
-            if (item._clockwise === undefined)
-                item.setClockwise(item._index === 0);
-        }
-        return items;
+        return insertChildren.base.call(this, index, list);
     },
 
     // DOCS: reduce()
@@ -156,23 +155,32 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
     },
 
     /**
-     * Specifies whether the compound path is oriented clock-wise.
+     * Specifies whether the compound-path is fully closed, meaning all its
+     * contained sub-paths are closed path.
      *
      * @bean
      * @type Boolean
+     * @see Path#isClosed()
      */
-    isClockwise: function() {
-        var child = this.getFirstChild();
-        return child && child.isClockwise();
+    isClosed: function() {
+        var children = this._children;
+        for (var i = 0, l = children.length; i < l; i++) {
+            if (!children[i]._closed)
+                return false;
+        }
+        return true;
     },
 
-    setClockwise: function(clockwise) {
-        if (this.isClockwise() ^ !!clockwise)
-            this.reverse();
+    setClosed: function(closed) {
+        var children = this._children;
+        for (var i = 0, l = children.length; i < l; i++) {
+            children[i].setClosed(closed);
+        }
     },
 
     /**
-     * The first Segment contained within the path.
+     * The first Segment contained within the compound-path, a short-cut to
+     * calling {@link Path#getFirstSegment()} on {@link Item#getFirstChild()}.
      *
      * @bean
      * @type Segment
@@ -183,7 +191,8 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
     },
 
     /**
-     * The last Segment contained within the path.
+     * The last Segment contained within the compound-path, a short-cut to
+     * calling {@link Path#getLastSegment()} on {@link Item#getLastChild()}.
      *
      * @bean
      * @type Segment
@@ -209,7 +218,8 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
     },
 
     /**
-     * The first Curve contained within the path.
+     * The first Curve contained within the compound-path, a short-cut to
+     * calling {@link Path#getFirstCurve()} on {@link Item#getFirstChild()}.
      *
      * @bean
      * @type Curve
@@ -220,19 +230,22 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
     },
 
     /**
-     * The last Curve contained within the path.
+     * The last Curve contained within the compound-path, a short-cut to
+     * calling {@link Path#getLastCurve()} on {@link Item#getLastChild()}.
      *
      * @bean
      * @type Curve
      */
     getLastCurve: function() {
         var last = this.getLastChild();
-        return last && last.getFirstCurve();
+        return last && last.getLastCurve();
     },
 
     /**
-     * The area that the path's geometry is covering. Self-intersecting paths
-     * can contain sub-areas that cancel each other out.
+     * The area that the compound-path's geometry is covering, calculated by
+     * getting th e{@link Path#getArea()} of each sub-path and it adding up.
+     * Note that self-intersecting paths and sub-paths of different orientation
+     * can result in areas that cancel each other out.
      *
      * @bean
      * @type Number
@@ -243,6 +256,21 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
         for (var i = 0, l = children.length; i < l; i++)
             area += children[i].getArea();
         return area;
+    },
+
+    /**
+     * The total length of all sub-paths in this compound-path, calculated by
+     * getting the {@link Path#getLength()} of each sub-path and it adding up.
+     *
+     * @bean
+     * @type Number
+     */
+    getLength: function() {
+        var children = this._children,
+            length = 0;
+        for (var i = 0, l = children.length; i < l; i++)
+            length += children[i].getLength();
+        return length;
     }
 }, /** @lends CompoundPath# */{
     // Enforce bean creation for getPathData(), as it has hidden parameters.
@@ -258,7 +286,7 @@ var CompoundPath = PathItem.extend(/** @lends CompoundPath# */{
             paths.push(child.getPathData(_matrix && !mx.isIdentity()
                     ? _matrix.appended(mx) : _matrix, _precision));
         }
-        return paths.join(' ');
+        return paths.join('');
     }
 }, /** @lends CompoundPath# */{
     _hitTestChildren: function _hitTestChildren(point, options, viewMatrix) {
@@ -351,8 +379,8 @@ new function() { // Injection scope for PostScript-like drawing functions
                 this.moveTo(last ? point.add(last._point) : point);
             },
 
-            closePath: function(join) {
-                getCurrentPath(this, true).closePath(join);
+            closePath: function(tolerance) {
+                getCurrentPath(this, true).closePath(tolerance);
             }
         }
     );

@@ -157,7 +157,7 @@ new function() { // Injection scope for various item event handlers
             this._setProject(project);
         } else {
             (hasProps && props.parent || project)
-                    ._insertItem(undefined, this, true, true);
+                    ._insertItem(undefined, this, true); // _created = true
         }
         // Filter out Item.NO_INSERT before _set(), for performance reasons.
         if (hasProps && props !== Item.NO_INSERT) {
@@ -209,7 +209,7 @@ new function() { // Injection scope for various item event handlers
      * @param {ChangeFlag} flags describes what exactly has changed
      */
     _changed: function(flags) {
-        var symbol = this._parentSymbol,
+        var symbol = this._symbol,
             cacheParent = this._parent || symbol,
             project = this._project;
         if (flags & /*#=*/ChangeFlag.GEOMETRY) {
@@ -239,8 +239,8 @@ new function() { // Injection scope for various item event handlers
     },
 
     /**
-     * Sets those properties of the passed object literal on this item to
-     * the values defined in the object literal, if the item has property of the
+     * Sets the properties of the passed object literal on this item to the
+     * values defined in the object literal, if the item has property of the
      * given name (or a setter defined for it).
      *
      * @param {Object} props
@@ -400,7 +400,7 @@ new function() { // Injection scope for various item event handlers
     },
 
     setStyle: function(style) {
-        // Don't access _style directly so Path#getStyle() can be overriden for
+        // Don't access _style directly so Path#getStyle() can be overridden for
         // CompoundPaths.
         this.getStyle().set(style);
     }
@@ -779,13 +779,11 @@ new function() { // Injection scope for various item event handlers
      * @type Point
      * @default null
      */
-    getPivot: function(_dontLink) {
+    getPivot: function() {
         var pivot = this._pivot;
-        if (pivot) {
-            var ctor = _dontLink ? Point : LinkedPoint;
-            pivot = new ctor(pivot.x, pivot.y, this, 'setPivot');
-        }
-        return pivot;
+        return pivot
+                ? new LinkedPoint(pivot.x, pivot.y, this, 'setPivot')
+                : null;
     },
 
     setPivot: function(/* point */) {
@@ -852,7 +850,7 @@ new function() { // Injection scope for various item event handlers
             // Restore to the last revertible matrix stored in _backup, and get
             // the bounds again. That way, we can prevent collapsing to 0-size.
             if (!_matrix.isInvertible()) {
-                _matrix.initialize(_matrix._backup
+                _matrix.set(_matrix._backup
                         || new Matrix().translate(_matrix.getTranslation()));
                 bounds = this.getBounds();
             }
@@ -911,7 +909,7 @@ new function() { // Injection scope for various item event handlers
             ].join('');
         // NOTE: This needs to happen before returning cached values, since even
         // then, _boundsCache needs to be kept up-to-date.
-        Item._updateBoundsCache(this._parent || this._parentSymbol, cacheItem);
+        Item._updateBoundsCache(this._parent || this._symbol, cacheItem);
         if (cacheKey && this._bounds && cacheKey in this._bounds)
             return this._bounds[cacheKey].rect.clone();
         var bounds = this._getBounds(matrix || _matrix, options);
@@ -932,11 +930,15 @@ new function() { // Injection scope for various item event handlers
     /**
      * Returns to correct matrix to use to transform stroke related geometries
      * when calculating bounds: the item's matrix if {@link #strokeScaling} is
-     * `true`, otherwise the shiftless, inverted view matrix.
+     * `true`, otherwise the parent's inverted view matrix. The returned matrix
+     * is always shiftless, meaning its translation vector is reset to zero.
      */
     _getStrokeMatrix: function(matrix, options) {
-        return this.getStrokeScaling() ? matrix : (options && options.internal
-                ? this : this._parent).getViewMatrix().invert()._shiftless();
+        var parent = this.getStrokeScaling() ? null
+                : options && options.internal ? this
+                    : this._parent || this._symbol && this._symbol._item,
+            mx = parent ? parent.getViewMatrix().invert() : matrix;
+        return mx && mx._shiftless();
     },
 
     statics: /** @lends Item */{
@@ -1073,12 +1075,7 @@ new function() { // Injection scope for various item event handlers
     setRotation: function(rotation) {
         var current = this.getRotation();
         if (current != null && rotation != null) {
-            // Preserve the cached _decomposed values over rotation, and only
-            // update the rotation property on it.
-            var decomposed = this._decomposed;
             this.rotate(rotation - current);
-            decomposed.rotation = rotation;
-            this._decomposed = decomposed;
         }
     },
 
@@ -1089,23 +1086,20 @@ new function() { // Injection scope for various item event handlers
      * @bean
      * @type Point
      */
-    getScaling: function(_dontLink) {
+    getScaling: function() {
         var decomposed = this._decompose(),
-            scaling = decomposed && decomposed.scaling,
-            ctor = _dontLink ? Point : LinkedPoint;
-        return scaling && new ctor(scaling.x, scaling.y, this, 'setScaling');
+            scaling = decomposed && decomposed.scaling;
+        return scaling
+                ? new LinkedPoint(scaling.x, scaling.y, this, 'setScaling')
+                : undefined;
     },
 
     setScaling: function(/* scaling */) {
-        var current = this.getScaling();
-        if (current) {
+        var current = this.getScaling(),
             // Clone existing points since we're caching internally.
-            var scaling = Point.read(arguments, 0, { clone: true }),
-                // See #setRotation() for preservation of _decomposed.
-                decomposed = this._decomposed;
+            scaling = Point.read(arguments, 0, { clone: true, readNull: true });
+        if (current && scaling) {
             this.scale(scaling.x / current.x, scaling.y / current.y);
-            decomposed.scaling = scaling;
-            this._decomposed = decomposed;
         }
     },
 
@@ -1379,9 +1373,9 @@ new function() { // Injection scope for various item event handlers
         return this._children;
     },
 
-    setChildren: function(items, _preserve) {
+    setChildren: function(items) {
         this.removeChildren();
-        this.addChildren(items, _preserve);
+        this.addChildren(items);
     },
 
     /**
@@ -1570,7 +1564,7 @@ new function() { // Injection scope for various item event handlers
         }
         // Use Matrix#initialize to easily copy over values.
         if (!excludeMatrix)
-            this._matrix.initialize(source._matrix);
+            this._matrix.set(source._matrix);
         // We can't just set _applyMatrix as many item types won't allow it,
         // e.g. creating a Shape in Path#toShape().
         // Using the setter instead takes care of it.
@@ -1870,7 +1864,9 @@ new function() { // Injection scope for hit-test functions shared with project
                     // If this is the first one in the recursion, factor in the
                     // zoom of the view and the globalMatrix of the item.
                     : this.getGlobalMatrix().prepend(this.getView()._matrix),
-            strokeMatrix = viewMatrix.inverted(),
+            strokeMatrix = this.getStrokeScaling()
+                    ? null
+                    : viewMatrix.inverted()._shiftless(),
             // Calculate the transformed padding as 2D size that describes the
             // transformed tolerance circle / ellipse. Make sure it's never 0
             // since we're using it for division.
@@ -1896,6 +1892,7 @@ new function() { // Injection scope for hit-test functions shared with project
                 || options.class && !(this instanceof options.class)),
             callback = options.match,
             that = this,
+            bounds,
             res;
 
         function match(hit) {
@@ -1916,7 +1913,7 @@ new function() { // Injection scope for hit-test functions shared with project
         if (checkSelf && (options.center || options.bounds) && this._parent) {
             // Don't get the transformed bounds, check against transformed
             // points instead
-            var bounds = this.getInternalBounds();
+            bounds = this.getInternalBounds();
             if (options.center) {
                 res = checkBounds('center', 'Center');
             }
@@ -2050,7 +2047,7 @@ new function() { // Injection scope for hit-test functions shared with project
         }
     },
 
-    /**
+       /**
      * Fetch the descendants (children or children of children) of this item
      * that match the properties in the specified object. Extended matching is
      * possible by providing a compare function or regular expression. Matching
@@ -2290,8 +2287,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item to be added as a child
      * @return {Item} the added item, or `null` if adding was not possible
      */
-    addChild: function(item, _preserve) {
-        return this.insertChild(undefined, item, _preserve);
+    addChild: function(item) {
+        return this.insertChild(undefined, item);
     },
 
     /**
@@ -2303,8 +2300,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item to be inserted as a child
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertChild: function(index, item, _preserve) {
-        var res = item ? this.insertChildren(index, [item], _preserve) : null;
+    insertChild: function(index, item) {
+        var res = item ? this.insertChildren(index, [item]) : null;
         return res && res[0];
     },
 
@@ -2316,8 +2313,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item[]} items the items to be added as children
      * @return {Item[]} the added items, or `null` if adding was not possible
      */
-    addChildren: function(items, _preserve) {
-        return this.insertChildren(this._children.length, items, _preserve);
+    addChildren: function(items) {
+        return this.insertChildren(this._children.length, items);
     },
 
     /**
@@ -2330,24 +2327,19 @@ new function() { // Injection scope for hit-test functions shared with project
      * @return {Item[]} the inserted items, or `null` if inserted was not
      *     possible
      */
-    insertChildren: function(index, items, _preserve, _proto) {
-        // CompoundPath#insertChildren() requires _preserve and _type:
-        // _preserve avoids changing of the children's path orientation
-        // _proto enforces the prototype of the inserted items, as used by
-        // CompoundPath#insertChildren()
+    insertChildren: function(index, items) {
         var children = this._children;
         if (children && items && items.length > 0) {
-            // We need to clone items because it might be
-            // an Item#children array. Also, we're removing elements if they
-            // don't match _type. Use Array.prototype.slice because items can be
-            // an arguments object.
-            items = Array.prototype.slice.apply(items);
+            // We need to clone items because it may be an Item#children array.
+            // Also, we're removing elements if they don't match _type.
+            // Use Base.slice() because items can be an arguments object.
+            items = Base.slice(items);
             // Remove the items from their parents first, since they might be
             // inserted into their own parents, affecting indices.
-            // Use the loop also to filter out wrong _type.
+            // Use the loop also to filter invalid items.
             for (var i = items.length - 1; i >= 0; i--) {
                 var item = items[i];
-                if (_proto && !(item instanceof _proto)) {
+                if (!item) {
                     items.splice(i, 1);
                 } else {
                     // Notify parent of change. Don't notify item itself yet,
@@ -2392,7 +2384,7 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Number} offset the offset at which the item should be inserted
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    _insertAt: function(item, offset, _preserve) {
+    _insertAt: function(item, offset) {
         var res = this;
         if (res !== item) {
             var owner = item && item._getOwner();
@@ -2400,7 +2392,7 @@ new function() { // Injection scope for hit-test functions shared with project
                 // Notify parent of change. Don't notify item itself yet,
                 // as we're doing so when adding it to the new owner below.
                 res._remove(false, true);
-                owner._insertItem(item._index + offset, res, _preserve);
+                owner._insertItem(item._index + offset, res);
             } else {
                 res = null;
             }
@@ -2414,8 +2406,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item above which it should be inserted
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertAbove: function(item, _preserve) {
-        return this._insertAt(item, 1, _preserve);
+    insertAbove: function(item) {
+        return this._insertAt(item, 1);
     },
 
     /**
@@ -2424,8 +2416,8 @@ new function() { // Injection scope for hit-test functions shared with project
      * @param {Item} item the item below which it should be inserted
      * @return {Item} the inserted item, or `null` if inserting was not possible
      */
-    insertBelow: function(item, _preserve) {
-        return this._insertAt(item, 0, _preserve);
+    insertBelow: function(item) {
+        return this._insertAt(item, 0);
     },
 
     /**
@@ -3951,9 +3943,9 @@ new function() { // Injection scope for hit-test functions shared with project
      *
      * @name Item#on
      * @function
-     * @param {Object} object an object literal containing one or more of the
-     *     following properties: {@values frame, mousedown, mouseup, mousedrag,
-     *     click, doubleclick, mousemove, mouseenter, mouseleave}
+     * @param {Object} object an object containing one or more of the following
+     *     properties: {@values frame, mousedown, mouseup, mousedrag, click,
+     *     doubleclick, mousemove, mouseenter, mouseleave}
      * @return {Item} this item itself, so calls can be chained
      *
      * @example {@paperscript}
@@ -4020,9 +4012,9 @@ new function() { // Injection scope for hit-test functions shared with project
      *
      * @name Item#off
      * @function
-     * @param {Object} object an object literal containing one or more of the
-     *     following properties: {@values frame, mousedown, mouseup, mousedrag,
-     *     click, doubleclick, mousemove, mouseenter, mouseleave}
+     * @param {Object} object an object containing one or more of the following
+     *     properties: {@values frame, mousedown, mouseup, mousedrag, click,
+     *     doubleclick, mousemove, mouseenter, mouseleave}
      * @return {Item} this item itself, so calls can be chained
      */
 
@@ -4100,7 +4092,7 @@ new function() { // Injection scope for hit-test functions shared with project
                 // Transform the blur value as a vector and use its new length:
                 blur = mx.transform(new Point(style.getShadowBlur(), 0)),
                 offset = mx.transform(this.getShadowOffset());
-            ctx.shadowColor =  style.getShadowColor().toCanvasStyle(ctx);
+            ctx.shadowColor = style.getShadowColor().toCanvasStyle(ctx);
             ctx.shadowBlur = blur.getLength();
             ctx.shadowOffsetX = offset.x;
             ctx.shadowOffsetY = offset.y;

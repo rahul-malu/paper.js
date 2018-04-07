@@ -19,7 +19,8 @@ new function() {
     // objects, dealing with baseVal, and item lists.
     // index is option, and if passed, causes a lookup in a list.
 
-    var rootSize;
+    var definitions = {},
+        rootSize;
 
     function getValue(node, name, isString, allowNull, allowPercent) {
         // Interpret value as number. Never return NaN, but 0 instead.
@@ -453,10 +454,9 @@ new function() {
 
         offset: function(item, value) {
             // http://www.w3.org/TR/SVG/pservers.html#StopElementOffsetAttribute
-            if (item.setRampPoint) {
-                var percentage = value.match(/(.*)%$/);
-                item.setRampPoint(percentage ? percentage[1] / 100
-                        : parseFloat(value));
+            if (item.setOffset) {
+                var percent = value.match(/(.*)%$/);
+                item.setOffset(percent ? percent[1] / 100 : parseFloat(value));
             }
         },
 
@@ -548,16 +548,17 @@ new function() {
         return item;
     }
 
-    var definitions = {};
     function getDefinition(value) {
         // When url() comes from a style property, '#'' seems to be missing on
         // WebKit. We also get variations of quotes or no quotes, single or
         // double, so handle it all with one regular expression:
         var match = value && value.match(/\((?:["'#]*)([^"')]+)/),
-            res = match && definitions[match[1]
-                // This is required by Firefox, which can produce absolute urls
-                // for local gradients, see #1001:
-                .replace(window.location.href.split('#')[0] + '#', '')];
+            name = match && match[1],
+            res = name && definitions[window
+                    // This is required by Firefox, which can produce absolute
+                    // urls for local gradients, see #1001:
+                    ? name.replace(window.location.href.split('#')[0] + '#', '')
+                    : name];
         // Patch in support for SVG's gradientUnits="objectBoundingBox" through
         // Color#_scaleToBounds
         if (res && res._scaleToBounds) {
@@ -660,7 +661,7 @@ new function() {
 
         function onLoad(svg) {
             try {
-                var node = typeof svg === 'object' ? svg : new window.DOMParser()
+                var node = typeof svg === 'object' ? svg : new self.DOMParser()
                         .parseFromString(svg, 'image/svg+xml');
                 if (!node.nodeName) {
                     node = null;
