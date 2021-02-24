@@ -18,7 +18,7 @@
 module.exports = function(window) {
     var Canvas;
     try {
-        Canvas = require('canvas');
+        Canvas = require('canvas').Canvas;
     } catch(e) {
         // Remove `self.window`, so we still have the global `self` reference,
         // but no `window` object:

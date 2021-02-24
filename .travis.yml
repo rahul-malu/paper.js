@@ -1,8 +1,7 @@
 language: node_js
 node_js:
 - stable
-- '5'
-- '4'
+- '14'
 sudo: false
 env:
   matrix:
@@ -40,4 +39,4 @@ script:
 - gulp test
 - gulp zip
 after_script:
-- '[ "${TRAVIS_BRANCH}" = "develop" ] && [ "${TRAVIS_NODE_VERSION}" = "stable" ] && travis/deploy-prebuilt.sh'
+- '[ "${TRAVIS_BRANCH}" = "develop" ] && [ "${TRAVIS_NODE_VERSION}" = "14" ] && travis/deploy-prebuilt.sh || true'
