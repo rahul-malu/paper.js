@@ -1,6 +1,4 @@
 /node_modules/
-<<<<<<< HEAD
-
-=======
 /dist/*/
->>>>>>> prebuilt/prod
+/dist/*.min.js
+/dist/paperjs.zip

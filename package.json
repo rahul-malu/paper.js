@@ -36,10 +36,6 @@
   "engines": {
     "node": ">=8.0.0"
   },
-  "dependencies": {
-    "jsdom": "^16.4.0",
-    "source-map-support": "^0.5.19"
-  },
   "optionalDependencies": {
     "canvas": "^2.6.1"
   },
@@ -63,6 +59,7 @@
     "gulp-whitespace": "^0.1.0",
     "gulp-zip": "^3.2.0",
     "husky": "^5.1.1",
+    "jsdom": "^16.4.0",
     "jshint": "^2.9.2",
     "jshint-summary": "^0.4.0",
     "merge-stream": "^2.0.0",
@@ -72,6 +69,7 @@
     "require-dir": "^1.2.0",
     "resemblejs": "^3.2.5",
     "run-sequence": "^1.2.2",
+    "source-map-support": "^0.5.19",
     "stats.js": "0.16.0",
     "straps": "^2.1.0"
   },
