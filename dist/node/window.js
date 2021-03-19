@@ -23,7 +23,8 @@ var window = (new jsdom.JSDOM('<html><body></body></html>', {
         url: 'file://' + process.cwd() + '/',
         features: {
             FetchExternalResources: ['img', 'script']
-        }
+        },
+        resources: 'usable',
     })).window;
 document = window.document;
 window = window.document.defaultView;
